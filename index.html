@@ -298,13 +298,9 @@ function parseAR2V(raw, tilt, product) {
     pos += absLen;
 
     let block;
-    if (sz < 0) {
-      // bzip2 compressed
-      try { block = window.Bzip2.decompress(slice); }
-      catch(e) { console.warn('[NEXRAD] bzip2 decomp error:', e.message); continue; }
-    } else {
-      block = slice;
-    }
+    // Chunk format always uses bzip2 regardless of sz sign
+    try { block = window.Bzip2.decompress(slice); }
+    catch(e) { console.warn('[NEXRAD] bzip2 decomp error:', e.message); continue; }
     recCount++;
 
     // Parse 2432-byte message records within decompressed block
