@@ -308,11 +308,11 @@ function parseAR2V(raw, tilt, product) {
     recCount++;
 
     // Parse 2432-byte message records within decompressed block
-    // CTM header is 12 bytes; message type is at CTM byte 3
+    // CTM header byte 7 = message type
     const bv = new DataView(block.buffer, block.byteOffset, block.byteLength);
     for (let r = 0; r + 2432 <= block.byteLength; r += 2432) {
-      const msgType = block[r + 3]; // CTM offset 3 = message type
-      if (msgType === 31) parseMsg31(block, bv, r + 12, elevs); // r+12 = after CTM
+      const msgType = block[r + 7]; // byte 7 = message type
+      if (msgType === 31) parseMsg31(block, bv, r + 12, elevs); // r+12 = after 12-byte CTM
     }
   }
 
@@ -336,21 +336,23 @@ function parseAR2V(raw, tilt, product) {
 }
 
 function parseMsg31(data, view, base, elevs) {
-  // base = start of Message 31 header (after 12-byte CTM)
-  // Azimuth angle (Float32) at +12, elevation number (Uint8) at +22
-  // Data block count (Uint16) at +32, pointers (Uint32) at +34, +38, +42...
+  // base = r+12 (start of Message 31 header, after 12-byte CTM)
+  // Msg31: radarId(4), time(4), date(2), azNum(2), azAngle(4f)@12,
+  //        compress(1), spare(1), radLen(2), azRes(1), radStatus(1),
+  //        elevNum(1)@22, cutSector(1), elevAngle(4f), spotBlank(1),
+  //        azIndex(1), dataBlockCount(2u)@30, pointers(4u each)@32
   if (base + 40 > data.byteLength) return;
   try {
     const az = view.getFloat32(base + 12, false);
     const en = data[base + 22];
-    const nb = view.getUint16(base + 32, false);
+    const nb = view.getUint16(base + 30, false);
     if (az < 0 || az >= 360 || en < 1 || en > 25 || nb < 1 || nb > 10) return;
     if (!elevs.has(en)) elevs.set(en, {azimuth:[],ref:[],vel:[],zdr:[],cc:[],fg:2125,gs:250});
     const el = elevs.get(en);
     el.azimuth.push(az);
     const mo = {ref:null,vel:null,zdr:null,cc:null};
     for (let i = 0; i < Math.min(nb, 9); i++) {
-      const ptr = view.getUint32(base + 34 + i*4, false);
+      const ptr = view.getUint32(base + 32 + i*4, false);
       if (!ptr) continue;
       const bb = base + ptr;
       if (bb + 28 > data.byteLength) continue;
