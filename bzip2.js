@@ -189,16 +189,19 @@
       }
       // cftab[c] now = number of characters < c in the block
 
-      // Step 2: build next-pointer into tt (bzip2 in-place trick)
-      // For each BWT position i, tt[cftab[char(i)]] gets i in upper bits
+      // Step 2: build LF mapping into tt.
+      // CRITICAL: snapshot original chars first — the in-place loop corrupts tt[bi]
+      // before we read it if cftab2[prev_ch] happened to equal bi.
+      var origChars = new Uint8Array(nblock);
+      for (var bi = 0; bi < nblock; bi++) origChars[bi] = tt[bi] & 0xFF;
       var cftab2 = cftab.slice();
       for (var bi = 0; bi < nblock; bi++) {
-        var ch = tt[bi] & 0xFF;
-        tt[cftab2[ch]] = (tt[cftab2[ch]] & 0xFF) | (bi << 8);
+        var ch = origChars[bi];
+        tt[cftab2[ch]] = ch | (bi << 8);  // low byte = char at sorted pos, high = source pos
         cftab2[ch]++;
       }
 
-      // Step 3: traverse from origPtr — output char FIRST, then follow link
+      // Step 3: traverse LF chain from origPtr
       var blockOut = new Uint8Array(nblock);
       var tPos = origPtr;
       for (var oi = 0; oi < nblock; oi++) {
