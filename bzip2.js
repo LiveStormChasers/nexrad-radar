@@ -157,13 +157,14 @@
       while (zvec !== EOB) {
         if (zvec === 0 || zvec === 1) {
           // ── RUNA / RUNB: decode bijective base-2 run length ──
-          var es = 0, N = 1;
+          // bzip2 source starts es=-1 so that es++ at end gives correct count
+          var es = -1, N = 1;
           do {
             es += (zvec === 0 ? 1 : 2) * N;
             N  *= 2;
             zvec = nextSym();
           } while (zvec === 0 || zvec === 1);
-          es++; // bijective +1
+          es++; // now es = correct run length
           var uc = inUse[symMTF[0]];
           if (nblock + es > maxBlock) throw new Error('BZ2: block overflow');
           for (var ri = 0; ri < es; ri++) tt[nblock++] = uc;
@@ -209,7 +210,24 @@
         tPos         = tt[tPos] >> 8;
       }
 
-      outChunks.push(blockOut);
+      // Step 4: Inverse RLE1 — bzip2 pre-compression RLE encodes runs of 4+
+      // identical bytes as: [b,b,b,b,count] where count=0..255 means 4+count copies.
+      var rle = [];
+      var ri = 0;
+      while (ri < nblock) {
+        var b = blockOut[ri++];
+        rle.push(b);
+        if (ri >= 2 && rle.length >= 4 &&
+            rle[rle.length-1] === b &&
+            rle[rle.length-2] === b &&
+            rle[rle.length-3] === b &&
+            rle[rle.length-4] === b) {
+          // Next byte is the extra run count (0 = just the 4 we have)
+          var extra = ri < nblock ? blockOut[ri++] : 0;
+          for (var ex = 0; ex < extra; ex++) rle.push(b);
+        }
+      }
+      outChunks.push(new Uint8Array(rle));
     }
 
     // ── Concatenate blocks ────────────────────────────────────
