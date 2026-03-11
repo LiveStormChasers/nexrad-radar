@@ -343,11 +343,16 @@ function parseAR2V(raw, tilt, product) {
 }
 
 function parseMsg31(data, view, base, elevs) {
-  // base = r+12 (start of Message 31 header, after 12-byte CTM)
-  // Msg31: radarId(4), time(4), date(2), azNum(2), azAngle(4f)@12,
-  //        compress(1), spare(1), radLen(2), azRes(1), radStatus(1),
-  //        elevNum(1)@22, cutSector(1), elevAngle(4f), spotBlank(1),
-  //        azIndex(1), dataBlockCount(2u)@30, pointers(4u each)@32
+  // base = r+28 (after CTM 12 bytes + Msg Header 16 bytes)
+  // Msg31 body: radarId(4)@0, ms(4), date(2), azNum(2), azAngle(4f)@12,
+  //   compress(1), spare(1), radLen(2), azRes(1), radStatus(1),
+  //   elevNum(1)@22, cutSector(1), elevAngle(4f)@24,
+  //   spotBlank(1)@28, azIndex(1)@29, dataBlockCount(2u)@30, pointers(4u each)@32
+  // Data Moment Block (ICD 2620002):
+  //   +0: 'D', +1-3: name, +4-7: reserved,
+  //   +8: numGates(u16), +10: firstGate(u16), +12: gateSize(u16),
+  //   +14: rfThresh(i16), +16: snrThresh(i16), +18: flags(u8), +19: wordSize(u8),
+  //   +20: scale(f32), +24: offset(f32), +28: data
   if (base + 40 > data.byteLength) return;
   try {
     const az = view.getFloat32(base + 12, false);
@@ -365,12 +370,12 @@ function parseMsg31(data, view, base, elevs) {
       if (bb + 28 > data.byteLength) continue;
       if (String.fromCharCode(data[bb]) !== 'D') continue;
       const bn  = String.fromCharCode(data[bb+1],data[bb+2],data[bb+3]).replace(/\0/g,'').trim().toUpperCase();
-      const ng  = view.getUint16(bb + 6, false);
-      const fg  = view.getUint16(bb + 8, false);
-      const gs  = view.getUint16(bb + 10, false);
-      const ws  = data[bb + 17];
-      const sc  = view.getFloat32(bb + 18, false);
-      const off = view.getFloat32(bb + 22, false);
+      const ng  = view.getUint16(bb + 8,  false);  // +8
+      const fg  = view.getUint16(bb + 10, false);  // +10
+      const gs  = view.getUint16(bb + 12, false);  // +12
+      const ws  = data[bb + 19];                   // +19
+      const sc  = view.getFloat32(bb + 20, false); // +20
+      const off = view.getFloat32(bb + 24, false); // +24
       if (ng<1||ng>3600||(ws!==8&&ws!==16)||sc===0) continue;
       const ds = bb + 28;
       if (ds + ng*(ws===16?2:1) > data.byteLength) continue;
