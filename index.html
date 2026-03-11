@@ -64,11 +64,11 @@ input[type=range]{width:80px;accent-color:var(--accent)}
 
   <!-- Composite product -->
   <div class="cg" id="comp-controls">
-    <span class="cl">Product</span>
+    <span class="cl">Source</span>
     <select id="comp-prd">
-      <option value="SeamlessHSR_00.00">MRMS Seamless HSR</option>
-      <option value="ReflectivityAtLowestAltitude_00.00">MRMS Lowest Alt REF</option>
-      <option value="MergedReflectivityQCComposite_00.50">MRMS QC Composite</option>
+      <option value="rainviewer">RainViewer (animated)</option>
+      <option value="nexrad-n0q-900913">Iowa State NEXRAD N0Q</option>
+      <option value="ridge::USCOMP-N0Q-0">Iowa State RIDGE Composite</option>
     </select>
   </div>
 
@@ -205,36 +205,46 @@ function startCd(secs) {
 
 $('br').addEventListener('click', ()=>{ clearInterval(cdTimer); load(); });
 
-// ── COMPOSITE MODE — MRMS tiles from Iowa State ───────────────────────
+// ── COMPOSITE MODE ────────────────────────────────────────────────────
 async function loadComposite() {
   const product = $('comp-prd').value;
-  showLoad('Loading MRMS…', product.split('_')[0]);
+  showLoad('Loading composite…', product);
   setStatus('Fetching…','warn');
-
-  // Get latest timestamp from Iowa State metadata
-  const meta = await fetch(
-    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/mrms::${product}/tilejson.json`
-  ).then(r=>r.json()).catch(()=>null);
-
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const ts = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
-  iTim.textContent = meta?.name || ts;
-  iSrc.textContent = 'MRMS / '+product.split('_')[0];
-
-  const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/mrms::${product}/{z}/{x}/{y}.png?ts=${Date.now()}`;
-
   clearOverlays();
-  radarLayer = L.tileLayer(tileUrl, {
-    opacity: curOp/100,
-    attribution: 'MRMS via Iowa State MESONET',
-    maxZoom: 10,
-    tileSize: 256,
-    zIndex: 200,
-  }).addTo(map);
+
+  if (product === 'rainviewer') {
+    // RainViewer: fetch latest frame from their API
+    const rv = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
+    const latest = rv.radar.past[rv.radar.past.length - 1];
+    const host = rv.host;
+    const tileUrl = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    const time = new Date(latest.time * 1000);
+    const pad = n => String(n).padStart(2,'0');
+    iTim.textContent = `${time.getUTCFullYear()}-${pad(time.getUTCMonth()+1)}-${pad(time.getUTCDate())} ${pad(time.getUTCHours())}:${pad(time.getUTCMinutes())}Z`;
+    iSrc.textContent = 'RainViewer Composite';
+    $('source-badge').textContent = 'RainViewer';
+    radarLayer = L.tileLayer(tileUrl, {
+      opacity: curOp/100,
+      attribution: '<a href="https://rainviewer.com">RainViewer</a>',
+      maxZoom: 12, tileSize: 256, zIndex: 200,
+    }).addTo(map);
+  } else {
+    // Iowa State pre-rendered NEXRAD composite tiles
+    const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`;
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
+    iSrc.textContent = 'Iowa State / '+product;
+    $('source-badge').textContent = 'Iowa State MESONET';
+    radarLayer = L.tileLayer(tileUrl, {
+      opacity: curOp/100,
+      attribution: 'NEXRAD via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
+      maxZoom: 10, tileSize: 256, zIndex: 200,
+    }).addTo(map);
+  }
 
   hideLoad();
-  setStatus('MRMS Live','ok');
+  setStatus('Composite Live','ok');
   updateLegend('REF');
   startCd(120);
 }
