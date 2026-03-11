@@ -298,17 +298,26 @@ function parseAR2V(raw, tilt, product) {
     pos += absLen;
 
     let block;
-    // Chunk format always uses bzip2 regardless of sz sign
+    // Chunks are always bzip2 compressed
     try { block = window.Bzip2.decompress(slice); }
     catch(e) { console.warn('[NEXRAD] bzip2 decomp error:', e.message); continue; }
     recCount++;
 
-    // Parse 2432-byte message records within decompressed block
-    // CTM header byte 7 = message type
+    // Parse messages within decompressed block.
+    // CTM header (12 bytes): size_hw@0 (uint16 BE), msg_type@3 (byte)
+    // Message 31 is VARIABLE LENGTH: total = 12 + 2*size_hw
+    // All other messages use fixed 2432-byte slots.
     const bv = new DataView(block.buffer, block.byteOffset, block.byteLength);
-    for (let r = 0; r + 2432 <= block.byteLength; r += 2432) {
-      const msgType = block[r + 7]; // byte 7 = message type
-      if (msgType === 31) parseMsg31(block, bv, r + 12, elevs); // r+12 = after 12-byte CTM
+    let r = 0;
+    while (r + 12 <= block.byteLength) {
+      const sizeHW  = bv.getUint16(r, false); // halfwords (excludes CTM)
+      const msgType = block[r + 3];           // byte 3 = message type
+      if (msgType === 31) {
+        parseMsg31(block, bv, r + 12, elevs);
+        r += 12 + sizeHW * 2; // variable length
+      } else {
+        r += 2432; // fixed slot for all other message types
+      }
     }
   }
 
