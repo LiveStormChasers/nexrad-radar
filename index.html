@@ -304,20 +304,22 @@ function parseAR2V(raw, tilt, product) {
     recCount++;
 
     // Parse messages within decompressed block.
-    // CTM header (12 bytes): size_hw@0 (uint16 BE), msg_type@3 (byte)
-    // Message 31 is VARIABLE LENGTH: total = 12 + 2*size_hw
+    // Structure: [CTM 12 bytes][Msg Header 16 bytes][Msg Body...]
+    // sizeHW @ r+12 (uint16 BE), msgType @ r+15, msg31 body @ r+28
+    // Message 31 is VARIABLE LENGTH: total = 12 + 2*sizeHW
     // All other messages use fixed 2432-byte slots.
     const bv = new DataView(block.buffer, block.byteOffset, block.byteLength);
     let r = 0;
-    while (r + 12 <= block.byteLength) {
-      const sizeHW  = bv.getUint16(r, false); // halfwords (excludes CTM)
-      const msgType = block[r + 3];           // byte 3 = message type
+    while (r + 28 <= block.byteLength) {
+      const sizeHW  = bv.getUint16(r + 12, false); // bytes r+12,r+13
+      const msgType = block[r + 15];               // byte r+15 = message type
       if (msgType === 31) {
-        parseMsg31(block, bv, r + 12, elevs);
+        parseMsg31(block, bv, r + 28, elevs); // r+28 = after CTM(12)+MsgHdr(16)
         r += 12 + sizeHW * 2; // variable length
       } else {
         r += 2432; // fixed slot for all other message types
       }
+      if (sizeHW === 0 && msgType !== 31) break;
     }
   }
 
