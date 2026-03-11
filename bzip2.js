@@ -210,21 +210,24 @@
         tPos         = tt[tPos] >> 8;
       }
 
-      // Step 4: Inverse RLE1 — bzip2 pre-compression RLE encodes runs of 4+
-      // identical bytes as: [b,b,b,b,count] where count=0..255 means 4+count copies.
+
+      // Step 4: Inverse RLE1 — track consecutive runs in INPUT (blockOut).
+      // When 4 identical bytes seen, next byte is extra repeat count (0-255).
+      // After consuming the count byte, reset the run tracker entirely.
       var rle = [];
-      var ri = 0;
-      while (ri < nblock) {
-        var b = blockOut[ri++];
+      var rleRun = 0, rleLast = -1;
+      for (var ri = 0; ri < nblock; ri++) {
+        var b = blockOut[ri];
         rle.push(b);
-        if (ri >= 2 && rle.length >= 4 &&
-            rle[rle.length-1] === b &&
-            rle[rle.length-2] === b &&
-            rle[rle.length-3] === b &&
-            rle[rle.length-4] === b) {
-          // Next byte is the extra run count (0 = just the 4 we have)
-          var extra = ri < nblock ? blockOut[ri++] : 0;
-          for (var ex = 0; ex < extra; ex++) rle.push(b);
+        if (b === rleLast) {
+          rleRun++;
+          if (rleRun === 4) {
+            var extra = (ri + 1 < nblock) ? blockOut[++ri] : 0;
+            for (var ex = 0; ex < extra; ex++) rle.push(b);
+            rleRun = 0; rleLast = -1; // full reset after consuming count byte
+          }
+        } else {
+          rleRun = 1; rleLast = b;
         }
       }
       outChunks.push(new Uint8Array(rle));
