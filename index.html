@@ -24,7 +24,6 @@ button:hover{border-color:var(--accent);color:var(--accent)}
 button.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
 #mapwrap{flex:1;position:relative;overflow:hidden}
 #map{width:100%;height:100%}
-#glCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400}
 #statusbar{display:flex;gap:16px;padding:4px 14px;background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;font-size:10px;flex-wrap:wrap}
 .sv{color:var(--dim)}.sv span{color:var(--text)}.sv.ok span{color:var(--green)}.sv.warn span{color:var(--warn)}.sv.err span{color:var(--danger)}
 #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,12,15,.92);border:1px solid var(--border);border-radius:6px;padding:20px 32px;text-align:center;z-index:1000;backdrop-filter:blur(4px)}
@@ -82,26 +81,32 @@ button.active{background:var(--accent);color:#000;border-color:var(--accent);fon
   <div class="cg" id="ctrlSite" style="display:none">
     <div class="cl">Station</div>
     <select id="selSite">
-      <option value="KTLX">KTLX &ndash; Oklahoma City</option><option value="KFWS">KFWS &ndash; Dallas/Ft Worth</option>
-      <option value="KICT">KICT &ndash; Wichita</option><option value="KINX">KINX &ndash; Tulsa</option>
-      <option value="KSRX">KSRX &ndash; Ft Smith</option><option value="KSHV">KSHV &ndash; Shreveport</option>
-      <option value="KLZK">KLZK &ndash; Little Rock</option><option value="KNQA">KNQA &ndash; Memphis</option>
-      <option value="KGWX">KGWX &ndash; Columbus MS</option><option value="KBMX">KBMX &ndash; Birmingham</option>
-      <option value="KOHX">KOHX &ndash; Nashville</option><option value="KHTX">KHTX &ndash; Huntsville</option>
-      <option value="KEWX">KEWX &ndash; Austin/S Antonio</option><option value="KHGX">KHGX &ndash; Houston</option>
+      <option value="KTLX">KTLX &ndash; Oklahoma City</option>
+      <option value="KFWS">KFWS &ndash; Dallas/Ft Worth</option>
+      <option value="KICT">KICT &ndash; Wichita</option>
+      <option value="KINX">KINX &ndash; Tulsa</option>
+      <option value="KSRX">KSRX &ndash; Ft Smith</option>
+      <option value="KSHV">KSHV &ndash; Shreveport</option>
+      <option value="KLZK">KLZK &ndash; Little Rock</option>
+      <option value="KNQA">KNQA &ndash; Memphis</option>
+      <option value="KGWX">KGWX &ndash; Columbus MS</option>
+      <option value="KBMX">KBMX &ndash; Birmingham</option>
+      <option value="KOHX">KOHX &ndash; Nashville</option>
+      <option value="KHTX">KHTX &ndash; Huntsville</option>
+      <option value="KEWX">KEWX &ndash; Austin/S Antonio</option>
+      <option value="KHGX">KHGX &ndash; Houston</option>
       <option value="KLCH">KLCH &ndash; Lake Charles</option>
     </select>
     <div class="cl">Product</div>
-    <select id="selPrd"><option value="REF">REF</option><option value="VEL">VEL</option><option value="ZDR">ZDR</option><option value="CC">CC</option></select>
+    <select id="selPrd"><option>REF</option><option>VEL</option><option>ZDR</option><option>CC</option></select>
     <div class="cl">Tilt</div>
-    <select id="selTilt"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+    <select id="selTilt"><option>1</option><option>2</option><option>3</option><option>4</option></select>
   </div>
   <div class="cg"><div class="cl">Opacity</div><input type="range" id="opSlider" min="10" max="100" value="90" oninput="setOpacity(this.value)"></div>
   <button onclick="load()">&#8634; Refresh</button>
 </div>
 <div id="mapwrap">
   <div id="map"></div>
-  <canvas id="glCanvas"></canvas>
   <div id="loading"><div id="lmsg">Initializing&hellip;</div><div id="lsub"></div></div>
   <div id="err"></div>
   <div id="prodPanel" class="hidden">
@@ -135,19 +140,20 @@ button.active{background:var(--accent);color:#000;border-color:var(--accent);fon
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-let map,gl,prog,glCanvas;
+let map, compOverlay=null, siteOverlay=null, cdInt=null;
 let iSrc,iTime,iRad,iSts,iCd;
-let mode='COMP',opacity=0.90,siteOverlay=null,cdInt=null;
-let dataTex=null,colormapTex=null,quadBuf=null;
-let uCenterMX,uCenterMY,uMpp,uCanvasSize,uOpacity;
-const MRMS_COLS=7000,MRMS_ROWS=3500,EARTH_R=6378137.0,PROXY='/wise/USA/MRMS/CONUS';
-let animFrames=[],animIdx=0,animPlaying=false,animTimer=null;
-let curProduct='SeamlessHSR',curColType='refl';
+let mode='COMP', opacity=0.90;
+const MRMS_COLS=7000, MRMS_ROWS=3500;
+// MRMS grid bounds: lon -129.995 to -60.005, lat 20.005 to 54.995
+const MRMS_BOUNDS = [[20.005, -129.995], [54.995, -60.005]];
+const PROXY='/wise/USA/MRMS/CONUS';
+let animFrames=[], animIdx=0, animPlaying=false, animTimer=null;
+let curProduct='SeamlessHSR', curColType='refl';
 let decodeWorker=null;
 const pendingDecode=new Map();
 let decodeId=0;
 
-// ── Product Definitions ──────────────────────────────────────────────────
+// ── Product Definitions ──────────────────────────────────────────────────────
 const PRODUCT_CATS=[
   {cat:'Reflectivity',items:[
     {id:'SeamlessHSR',name:'Reflectivity',sub:'Seamless HSR',unit:'dBZ',colType:'refl'}]},
@@ -192,7 +198,7 @@ const PRODUCT_CATS=[
 ];
 function getProdInfo(id){for(const c of PRODUCT_CATS)for(const p of c.items)if(p.id===id)return p;return null;}
 
-// ── Colormap LUTs ────────────────────────────────────────────────────────
+// ── Colormap LUTs ───────────────────────────────────────────────────────────
 function buildLut(stops){
   const lut=new Uint8Array(256*4);
   for(let v=0;v<256;v++){
@@ -209,7 +215,7 @@ function buildLut(stops){
   return lut;
 }
 const COLORMAPS={};
-// Reflectivity NWS standard (val*0.5-32 dBZ; val 74=5dBZ, 164=50dBZ)
+// Reflectivity: val=0 & 255 = no data (transparent), val 74=5dBZ start
 COLORMAPS.refl=buildLut([
   [0,0,0,0,0],[73,0,0,0,0],
   [74,4,233,231,200],[84,1,159,244,210],[94,3,0,244,220],
@@ -217,37 +223,30 @@ COLORMAPS.refl=buildLut([
   [134,253,248,2,240],[144,229,188,0,240],[154,253,149,0,245],
   [164,253,0,0,255],[174,212,0,0,255],[184,188,0,0,255],
   [194,248,0,253,255],[204,152,84,198,255],[214,255,255,255,255],[254,255,255,255,255]]);
-// Echo Tops (val*0.1 km)
 COLORMAPS.et=buildLut([
   [0,0,0,0,0],[1,0,30,180,220],[15,0,100,255,220],[30,0,210,255,220],
   [50,0,230,50,220],[70,180,255,0,230],[90,255,255,0,235],
   [110,255,180,0,240],[130,255,80,0,250],[150,255,0,0,255],
   [180,255,0,200,255],[210,255,255,255,255],[254,255,255,255,255]]);
-// QPE
 COLORMAPS.qpe=buildLut([
   [0,0,0,0,0],[1,180,250,255,200],[20,0,200,50,220],[50,0,230,0,230],
   [80,200,255,0,235],[110,255,255,0,240],[140,255,170,0,245],
   [170,255,80,0,250],[200,255,0,0,255],[225,200,0,180,255],[254,255,255,255,255]]);
-// VIL
 COLORMAPS.vil=buildLut([
   [0,0,0,0,0],[1,0,100,255,200],[10,0,230,80,210],[20,0,230,0,220],
   [40,230,255,0,230],[60,255,180,0,240],[80,255,60,0,250],
   [100,255,0,0,255],[120,255,0,200,255],[160,255,255,255,255],[254,255,255,255,255]]);
-// MESH hail
 COLORMAPS.mesh=buildLut([
   [0,0,0,0,0],[1,0,230,230,200],[10,0,230,80,210],[24,255,255,0,230],
   [36,255,170,0,240],[50,255,80,0,250],[72,255,0,0,255],
   [100,200,0,255,255],[130,255,255,255,255],[254,255,255,255,255]]);
-// SHI
 COLORMAPS.shi=buildLut([
   [0,0,0,0,0],[1,0,200,255,200],[40,0,230,50,210],
   [80,255,255,0,230],[120,255,150,0,240],[160,255,0,0,255],
   [200,255,0,255,255],[254,255,255,255,255]]);
-// Rotation
 COLORMAPS.rot=buildLut([
   [0,0,0,0,0],[200,0,0,0,0],[210,50,50,200,180],[220,200,50,200,200],
   [230,255,0,200,230],[240,255,50,0,245],[250,255,255,0,255],[254,255,255,255,255]]);
-// Precip type
 COLORMAPS.ptype=buildLut([
   [0,0,0,0,0],[1,0,200,255,220],[2,0,80,200,220],[3,200,230,255,230],
   [9,255,200,0,230],[10,0,230,0,220],[90,255,80,0,240],[96,200,0,200,230],
@@ -258,11 +257,24 @@ function getLegInfo(t){
     qpe:{max:'Extreme',min:'Trace'},vil:{max:'80+ kg/m\u00b2',min:'1 kg/m\u00b2'},
     mesh:{max:'65+ mm',min:'0.5 mm'},shi:{max:'High',min:'Low'},
     rot:{max:'Extreme',min:'Weak'},ptype:{max:'Type',min:'None'}};
-  return m[t]||{max:'—',min:'—'};
+  return m[t]||{max:'\u2014',min:'\u2014'};
 }
 
-// ── Decode Worker ────────────────────────────────────────────────────────
-const WSRC=`self.onmessage=function(e){const{id,buffer,offset}=e.data;const b=new Uint8Array(buffer,offset);const T=3500*7000;const out=new Uint8Array(T);let i=0,p=0;while(i+1<b.length&&p<T){const c=b[i++],v=b[i++],e2=Math.min(p+c,T);out.fill(v,p,e2);p=e2;}self.postMessage({id,data:out},[out.buffer]);};`;
+// ── Decode Worker ───────────────────────────────────────────────────────────
+const WSRC=`self.onmessage=function(e){
+  const{id,buffer,offset}=e.data;
+  const b=new Uint8Array(buffer,offset);
+  const T=3500*7000;
+  const out=new Uint8Array(T);
+  let i=0,p=0;
+  while(i+1<b.length&&p<T){
+    const cnt=b[i++],val=b[i++];
+    const end=Math.min(p+cnt,T);
+    out.fill(val,p,end);
+    p=end;
+  }
+  self.postMessage({id,data:out},[out.buffer]);
+};`;
 function initWorker(){
   const blob=new Blob([WSRC],{type:'application/javascript'});
   decodeWorker=new Worker(URL.createObjectURL(blob));
@@ -270,112 +282,63 @@ function initWorker(){
 }
 async function decodeWise(ab){
   const bytes=new Uint8Array(ab);
-  let js=-1;for(let i=0;i<500;i++)if(bytes[i]===0x7B){js=i;break;}
-  let d=0,je=-1;for(let i=js;i<Math.min(bytes.length,50000);i++){if(bytes[i]===0x7B)d++;else if(bytes[i]===0x7D){d--;if(d===0){je=i;break;}}}
+  // Find JSON block start
+  let js=-1;
+  for(let i=0;i<500;i++)if(bytes[i]===0x7B){js=i;break;}
+  // Find JSON block end (brace counting)
+  let d=0,je=-1;
+  for(let i=js;i<Math.min(bytes.length,50000);i++){
+    if(bytes[i]===0x7B)d++;
+    else if(bytes[i]===0x7D){d--;if(d===0){je=i;break;}}
+  }
   const off=je+1;
   if(!decodeWorker)initWorker();
-  return new Promise(res=>{const id=++decodeId;pendingDecode.set(id,res);decodeWorker.postMessage({id,buffer:ab,offset:off},[ab]);});
+  return new Promise(res=>{
+    const id=++decodeId;
+    pendingDecode.set(id,res);
+    decodeWorker.postMessage({id,buffer:ab,offset:off},[ab]);
+  });
 }
 
-// ── WebGL Setup ──────────────────────────────────────────────────────────
-const VS=`attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}`;
-const FS=`precision highp float;
-uniform sampler2D u_data;uniform sampler2D u_cmap;
-uniform float u_cmx;uniform float u_cmy;uniform float u_mpp;
-uniform vec2 u_sz;uniform float u_op;
-const float R=6378137.0,PI=3.14159265,R2D=180.0/3.14159265;
-const float LN=-130.0,LX=-60.0,LA=20.0,LB=55.0,LR=70.0,LT=35.0;
-void main(){
-  vec2 off=gl_FragCoord.xy-u_sz*0.5;
-  float mx=u_cmx+off.x*u_mpp,my=u_cmy-off.y*u_mpp;
-  float lon=mx/R*R2D,lat=(2.0*atan(exp(my/R))-PI*0.5)*R2D;
-  float u=(lon-LN)/LR,v=(LB-lat)/LT;
-  if(u<0.0||u>1.0||v<0.0||v>1.0){discard;return;}
-  float val=texture2D(u_data,vec2(u,v)).r;
-  if(val>0.998){discard;return;}
-  vec4 col=texture2D(u_cmap,vec2(val,0.5));
-  if(col.a<0.01){discard;return;}
-  gl_FragColor=vec4(col.rgb,col.a*u_op);
-}`;
-
-function initGL(){
-  glCanvas=$('glCanvas');
-  gl=glCanvas.getContext('webgl',{premultipliedAlpha:false,alpha:true});
-  if(!gl)return false;
-  function cs(t,s){const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(sh));return sh;}
-  prog=gl.createProgram();
-  gl.attachShader(prog,cs(gl.VERTEX_SHADER,VS));
-  gl.attachShader(prog,cs(gl.FRAGMENT_SHADER,FS));
-  gl.linkProgram(prog);
-  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(prog));return false;}
-  gl.useProgram(prog);
-  quadBuf=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
-  uCenterMX=gl.getUniformLocation(prog,'u_cmx');
-  uCenterMY=gl.getUniformLocation(prog,'u_cmy');
-  uMpp=gl.getUniformLocation(prog,'u_mpp');
-  uCanvasSize=gl.getUniformLocation(prog,'u_sz');
-  uOpacity=gl.getUniformLocation(prog,'u_op');
-  gl.uniform1i(gl.getUniformLocation(prog,'u_data'),0);
-  gl.uniform1i(gl.getUniformLocation(prog,'u_cmap'),1);
-  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
-  dataTex=mkDataTex(null);colormapTex=mkCmapTex(new Uint8Array(256*4));
-  resizeGL();window.addEventListener('resize',resizeGL);
-  return true;
-}
-function resizeGL(){const w=$('mapwrap');glCanvas.width=w.clientWidth;glCanvas.height=w.clientHeight;if(gl){gl.viewport(0,0,glCanvas.width,glCanvas.height);renderGL();}}
-function mkDataTex(data){
-  const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
-  if(data)gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,MRMS_COLS,MRMS_ROWS,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
-  else gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,1,1,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,new Uint8Array([255]));
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  return t;
-}
-function mkCmapTex(lut){
-  const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,1,0,gl.RGBA,gl.UNSIGNED_BYTE,lut);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  return t;
-}
-function renderGL(){
-  if(!gl||!dataTex||mode!=='COMP')return;
-  const W=glCanvas.width,H=glCanvas.height;if(!W||!H)return;
-  gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
-  const c=map.getCenter(),z=map.getZoom();
-  const mpp=2*Math.PI*EARTH_R/(256*Math.pow(2,z));
-  gl.useProgram(prog);
-  gl.uniform1f(uCenterMX,c.lng*(Math.PI/180)*EARTH_R);
-  gl.uniform1f(uCenterMY,Math.log(Math.tan(Math.PI/4+c.lat*(Math.PI/360)))*EARTH_R);
-  gl.uniform1f(uMpp,mpp);
-  gl.uniform2f(uCanvasSize,W,H);
-  gl.uniform1f(uOpacity,opacity);
-  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,dataTex);
-  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,colormapTex);
-  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
-  const p=gl.getAttribLocation(prog,'a_pos');
-  gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,2,gl.FLOAT,false,0,0);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+// ── Composite Renderer (2D Canvas → Leaflet imageOverlay) ───────────────────
+// This is simple and correct: decode → colorize → overlay on map bounds
+function dataToCanvas(data, lut) {
+  // data: Uint8Array of MRMS_COLS × MRMS_ROWS values
+  // The MRMS grid is row-major, top-to-bottom (row 0 = lat 54.995, last row = lat 20.005)
+  // We render directly: row 0 → top of canvas, matching the bounds overlay
+  const canvas = document.createElement('canvas');
+  canvas.width = MRMS_COLS;
+  canvas.height = MRMS_ROWS;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(MRMS_COLS, MRMS_ROWS);
+  const px = img.data;
+  for(let i=0; i<MRMS_COLS*MRMS_ROWS; i++){
+    const v=data[i];
+    const li=v*4;
+    px[i*4]  =lut[li];
+    px[i*4+1]=lut[li+1];
+    px[i*4+2]=lut[li+2];
+    px[i*4+3]=lut[li+3];
+  }
+  ctx.putImageData(img,0,0);
+  return canvas;
 }
 
-// ── Data Loading ─────────────────────────────────────────────────────────
+// ── Data Loading ─────────────────────────────────────────────────────────────
 async function loadComposite(){
-  clearInterval(cdInt);animStop();
-  setStatus('Loading\u2026','warn');showLoad(`Loading ${getProdInfo(curProduct)?.name||curProduct}\u2026`);
+  clearInterval(cdInt); animStop();
+  setStatus('Loading\u2026','warn');
+  showLoad(`Loading ${getProdInfo(curProduct)?.name||curProduct}\u2026`);
   iSrc.textContent='MRMS/CONUS';
   try{
-    const txt=await fetch(`${PROXY}/${curProduct}/dir.list`).then(r=>{if(!r.ok)throw new Error(`dir.list ${r.status}`);return r.text();});
+    const txt=await fetch(`${PROXY}/${curProduct}/dir.list`).then(r=>{
+      if(!r.ok)throw new Error(`dir.list ${r.status}`);return r.text();
+    });
     const files=txt.trim().split('\n').filter(Boolean);
     if(!files.length)throw new Error('No frames');
     const N=Math.min(14,files.length);
     const recent=files.slice(-N);
-    animFrames=recent.map(f=>({filename:f,data:null,time:fn2time(f)}));
+    animFrames=recent.map(f=>({filename:f,canvas:null,time:fn2time(f)}));
     animIdx=animFrames.length-1;
     $('animSlider').max=animFrames.length-1;
     $('animSlider').value=animIdx;
@@ -384,38 +347,54 @@ async function loadComposite(){
     await loadFrame(animIdx);
     showFrame(animIdx);
     preloadFrames();
-    hideLoad();setStatus('OK','ok');startCd(120);
+    hideLoad(); setStatus('OK','ok'); startCd(120);
   }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();console.error(e);}
 }
+
 async function loadFrame(idx){
-  if(animFrames[idx]?.data)return;
+  if(animFrames[idx]?.canvas)return;
   const f=animFrames[idx];if(!f)return;
-  const buf=await fetch(`${PROXY}/${curProduct}/${f.filename}`).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.arrayBuffer();});
-  f.data=await decodeWise(buf);
+  const buf=await fetch(`${PROXY}/${curProduct}/${f.filename}`).then(r=>{
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.arrayBuffer();
+  });
+  const data=await decodeWise(buf);
+  f.canvas=dataToCanvas(data, getLut(curColType));
 }
+
 async function preloadFrames(){
   for(let i=animFrames.length-2;i>=0;i--){
-    if(animFrames[i]?.data)continue;
+    if(animFrames[i]?.canvas)continue;
     try{await loadFrame(i);}catch(e){console.warn('preload fail',i);}
   }
 }
+
 function showFrame(idx){
-  const f=animFrames[idx];if(!f?.data)return;
-  if(dataTex)gl.deleteTexture(dataTex);
-  dataTex=mkDataTex(f.data);
-  renderGL();
+  const f=animFrames[idx];if(!f?.canvas)return;
+  // Update/create the Leaflet overlay using the canvas data URL
+  const url=f.canvas.toDataURL();
+  if(compOverlay){
+    compOverlay.setUrl(url);
+  } else {
+    compOverlay=L.imageOverlay(url, MRMS_BOUNDS, {
+      opacity: opacity,
+      interactive: false,
+      crossOrigin: true
+    }).addTo(map);
+  }
+  compOverlay.setOpacity(opacity);
   $('animTime').textContent=f.time;
   $('animSlider').value=idx;
   $('ppTime').textContent=`Frame: ${f.time} \u2022 ${idx===animFrames.length-1?'\u25cf Live':'Archive'}`;
   iTime.textContent=f.time;
   $('liveBtn').classList.toggle('on',idx===animFrames.length-1);
 }
+
 function fn2time(fn){
   const m=fn.match(/(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_\d{2}/);
   return m?`${m[2]}/${m[3]} ${m[4]}:${m[5]}z`:fn;
 }
 
-// ── Animation ────────────────────────────────────────────────────────────
+// ── Animation ─────────────────────────────────────────────────────────────
 function animToggle(){animPlaying?animStop():animPlay();}
 function animPlay(){
   animPlaying=true;$('btnPlay').classList.add('on');$('btnPlay').textContent='\u25a0';
@@ -429,22 +408,22 @@ function doAnim(){
   if(!animPlaying)return;
   animTimer=setTimeout(()=>{
     animIdx=(animIdx+1)%animFrames.length;
-    if(animFrames[animIdx]?.data)showFrame(animIdx);
+    if(animFrames[animIdx]?.canvas)showFrame(animIdx);
     else loadFrame(animIdx).then(()=>showFrame(animIdx)).catch(()=>{});
     doAnim();
   },animIdx===animFrames.length-1?1200:400);
 }
 function animStep(d){
   animStop();animIdx=Math.max(0,Math.min(animFrames.length-1,animIdx+d));
-  if(animFrames[animIdx]?.data)showFrame(animIdx);
+  if(animFrames[animIdx]?.canvas)showFrame(animIdx);
   else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
 }
 function animSeek(v){
   animStop();animIdx=v;
-  if(animFrames[animIdx]?.data)showFrame(animIdx);
+  if(animFrames[animIdx]?.canvas)showFrame(animIdx);
   else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
 }
-function animGoLive(){animStop();animIdx=animFrames.length-1;if(animFrames[animIdx]?.data)showFrame(animIdx);}
+function animGoLive(){animStop();animIdx=animFrames.length-1;if(animFrames[animIdx]?.canvas)showFrame(animIdx);}
 
 // ── Product Panel ─────────────────────────────────────────────────────────
 function buildPanel(){
@@ -468,12 +447,20 @@ function buildPanel(){
 }
 function drawSwatch(canvas,ct){
   const ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(32,18);
-  for(let x=0;x<32;x++){const v=Math.round((x/31)*254)+1,r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];for(let y=0;y<18;y++){const i=(y*32+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}}
+  for(let x=0;x<32;x++){
+    const v=Math.round((x/31)*254)+1;
+    const r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];
+    for(let y=0;y<18;y++){const i=(y*32+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}
+  }
   ctx.putImageData(img,0,0);
 }
 function drawLegend(ct){
   const canvas=$('legCanvas'),ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(16,200);
-  for(let y=0;y<200;y++){const v=Math.round(((199-y)/199)*254)+1,r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];for(let x=0;x<16;x++){const i=(y*16+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}}
+  for(let y=0;y<200;y++){
+    const v=Math.round(((199-y)/199)*254)+1;
+    const r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];
+    for(let x=0;x<16;x++){const i=(y*16+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}
+  }
   ctx.putImageData(img,0,0);
   const li=getLegInfo(ct);$('legMax').textContent=li.max;$('legMin').textContent=li.min;
   $('legend').classList.remove('hidden');
@@ -481,8 +468,6 @@ function drawLegend(ct){
 async function selectProduct(id){
   if(id===curProduct){togglePanel();return;}
   curProduct=id;const info=getProdInfo(id);curColType=info?.colType||'refl';
-  if(colormapTex)gl.deleteTexture(colormapTex);
-  colormapTex=mkCmapTex(getLut(curColType));
   document.querySelectorAll('.pp-item').forEach(el=>el.classList.toggle('active',el.dataset.id===id));
   $('prodLabel').textContent=info?.name||id;
   $('ppProdName').textContent=`MRMS \u2022 ${info?.name||id}`;
@@ -491,7 +476,7 @@ async function selectProduct(id){
 }
 function togglePanel(){$('prodPanel').classList.toggle('hidden');}
 
-// ── UI ────────────────────────────────────────────────────────────────────
+// ── UI ──────────────────────────────────────────────────────────────────────
 function setMode(m){
   mode=m;
   $('btnComp').classList.toggle('active',m==='COMP');
@@ -501,11 +486,18 @@ function setMode(m){
   $('sRad').style.display=m==='SITE'?'':'none';
   $('animBar').classList.toggle('hidden',m!=='COMP');
   $('legend').classList.toggle('hidden',m!=='COMP');
-  if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
-  if(m==='COMP'){renderGL();}else{if(gl){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}}
+  if(m==='COMP'){
+    if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
+  } else {
+    if(compOverlay){map.removeLayer(compOverlay);compOverlay=null;}
+  }
   load();
 }
-function setOpacity(v){opacity=v/100;renderGL();if(siteOverlay)siteOverlay.setOpacity(opacity);}
+function setOpacity(v){
+  opacity=v/100;
+  if(compOverlay)compOverlay.setOpacity(opacity);
+  if(siteOverlay)siteOverlay.setOpacity(opacity);
+}
 function showLoad(m,s=''){$('loading').classList.remove('hidden');$('lmsg').textContent=m;$('lsub').textContent=s;}
 function hideLoad(){$('loading').classList.add('hidden');}
 function showErr(m){const e=$('err');e.textContent=m;e.classList.add('v');setTimeout(()=>e.classList.remove('v'),8000);}
@@ -519,7 +511,7 @@ async function loadSingleSite(){
   clearInterval(cdInt);animStop();setStatus('Scanning S3\u2026','warn');showLoad('Scanning S3\u2026');
   if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
   const site=$('selSite').value,prd=$('selPrd').value,tilt=parseInt($('selTilt').value);
-  iSrc.textContent='S3/'+site;iRad.textContent='—';
+  iSrc.textContent='S3/'+site;iRad.textContent='\u2014';
   try{
     const r=await fetch(`https://unidata-nexrad-level2-chunks.s3.amazonaws.com/?list-type=2&prefix=${site}/&max-keys=400`);
     const xml=await r.text(),dom=new DOMParser().parseFromString(xml,'text/xml');
@@ -533,10 +525,9 @@ async function loadSingleSite(){
     const{azimuth,data,gateSize,firstGate,rangeM}=parseAllChunks(bufs,tilt,prd);
     if(!azimuth.length)throw new Error('No radials for tilt '+tilt);
     const ts=vols[vols.length-1].match(/(\d{8}_\d{6})/);
-    iTime.textContent=ts?ts[1].replace('_',' '):'—';iRad.textContent=azimuth.length;
+    iTime.textContent=ts?ts[1].replace('_',' '):'\u2014';iRad.textContent=azimuth.length;
     const cnv=renderToCanvas(azimuth,data,gateSize,firstGate,prd,rangeM);
     const ctr=map.getCenter(),bnds=calcBounds(ctr,rangeM||460000);
-    if(siteOverlay)map.removeLayer(siteOverlay);
     siteOverlay=L.imageOverlay(cnv.toDataURL(),bnds,{opacity,interactive:false}).addTo(map);
     setStatus('OK','ok');hideLoad();startCd(300);
   }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();}
@@ -548,19 +539,18 @@ function parseMsg31(data,view,base,elevs){try{if(base+28>data.length)return null
 function renderToCanvas(azimuth,dataArr,gs,fg,prd,rm){const sz=1024,c=document.createElement('canvas');c.width=sz;c.height=sz;const ctx=c.getContext('2d'),img=ctx.createImageData(sz,sz),px=img.data;const cx=sz/2,sc=sz/(2*rm);for(let i=0;i<azimuth.length-1;i++){const a0=azimuth[i]*Math.PI/180,a1=azimuth[i+1]*Math.PI/180;const gates=dataArr[i];for(let g=0;g<gates.length;g++){const v=gates[g];if(v===null)continue;const[r,gv,b,a]=siteColor(v,prd);if(a===0)continue;const r0=(fg+g*gs)*sc,r1=r0+gs*sc;const da=Math.abs(a1-a0)||0.01;for(let ang=a0;ang<=a1+0.001;ang+=da*0.3){for(let rr=r0;rr<r1+.5;rr+=0.6){const px2=Math.round(cx+Math.sin(ang)*rr),py2=Math.round(cx-Math.cos(ang)*rr);if(px2<0||px2>=sz||py2<0||py2>=sz)continue;const idx=(py2*sz+px2)*4;px[idx]=r;px[idx+1]=gv;px[idx+2]=b;px[idx+3]=a;}}}}ctx.putImageData(img,0,0);return c;}
 function siteColor(v,prd){if(prd==='REF'){if(v<5)return[0,0,0,0];return[...gradient(REF_STOPS,v).map(Math.round),230];}if(prd==='VEL'){if(Math.abs(v)<1)return[0,0,0,0];if(v>0)return[...gradient([[1,[0,200,0]],[30,[0,100,0]],[60,[0,50,0]],[90,[0,30,0]]],Math.min(v,90)).map(Math.round),230];return[...gradient([[0,[0,0,50]],[-30,[0,0,100]],[-60,[0,0,200]],[-90,[0,0,255]]],Math.max(v,-90)).map(Math.round),230];}if(prd==='ZDR'){const t=(v+2)/8;return[...gradient([[0,[0,0,220]],[0.5,[0,220,0]],[1,[220,0,0]]],Math.max(0,Math.min(1,t))).map(Math.round),220];}if(prd==='CC'){if(v<0.7)return[0,0,0,0];const t=(v-0.7)/0.3;return[...gradient([[0,[200,0,0]],[0.5,[220,220,0]],[1,[0,200,0]]],t).map(Math.round),220];}return[128,128,128,120];}
 
-// ── Init ──────────────────────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────
 async function load(){if(mode==='COMP')await loadComposite();else await loadSingleSite();}
 
 window.addEventListener('load',()=>{
   iSrc=$('sSrc').querySelector('span');iTime=$('sTime').querySelector('span');
   iRad=$('sRad').querySelector('span');iSts=$('sSts').querySelector('span');iCd=$('sCd').querySelector('span');
   map=L.map('map',{center:[37,-96],zoom:5,zoomControl:false,attributionControl:true});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'\u00a9 CartoDB',subdomains:'abcd',maxZoom:18}).addTo(map);
-  map.on('move zoom moveend zoomend',renderGL);
-  if(!initGL())return;
-  colormapTex=mkCmapTex(getLut('refl'));
-  buildPanel();drawLegend('refl');
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'\u00a9 CartoDB',subdomains:'abcd',maxZoom:18
+  }).addTo(map);
   $('selSite').onchange=$('selPrd').onchange=$('selTilt').onchange=()=>{if(mode==='SITE')loadSingleSite();};
+  buildPanel(); drawLegend('refl');
   loadComposite();
 });
 </script>
