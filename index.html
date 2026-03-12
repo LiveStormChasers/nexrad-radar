@@ -9,30 +9,29 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0c0f;color:#c8d4e0;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-#bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#111418;border-bottom:1px solid #1e2329;flex-shrink:0;flex-wrap:wrap}
+#bar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:#111418;border-bottom:1px solid #1e2329;flex-shrink:0;flex-wrap:wrap}
 .logo{font-size:15px;font-weight:700;color:#00d4ff;letter-spacing:.1em;white-space:nowrap}
 select,button{background:#0a0c0f;border:1px solid #2d3540;color:#c8d4e0;font-size:11px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:inherit}
 select:hover,button:hover{border-color:#00d4ff}
-button.active{background:#00d4ff;color:#000;border-color:#00d4ff;font-weight:700}
 label{color:#5a6a7a;font-size:10px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
 #map{flex:1}
 #status{padding:3px 12px;background:#111418;border-top:1px solid #1e2329;font-size:10px;color:#5a6a7a;flex-shrink:0;display:flex;gap:16px}
 #status span{color:#c8d4e0}
-.leaflet-control-zoom{display:none}
+.leaflet-control-zoom a{background:#111418!important;color:#c8d4e0!important;border-color:#2d3540!important}
+.site-label{background:transparent;border:none;box-shadow:none;color:#00d4ff;font-size:10px;font-family:monospace;font-weight:700;white-space:nowrap;text-shadow:0 0 4px #000,0 0 4px #000}
 </style>
 </head>
 <body>
 <div id="bar">
   <div class="logo">⚡ NEXRAD</div>
-  <label>Station</label>
-  <select id="site" onchange="loadSite()"></select>
   <label>Product</label>
-  <select id="product" onchange="loadSite()">
+  <select id="product" onchange="if(currentSite) loadSite(currentSite)">
     <option value="sr_bref">Reflectivity</option>
     <option value="sr_vel">Velocity</option>
   </select>
-  <button onclick="loadSite()">⟳ Refresh</button>
-  <div id="stTime" style="color:#00d4ff;font-size:10px;margin-left:8px"></div>
+  <button onclick="if(currentSite) loadSite(currentSite)">⟳ Refresh</button>
+  <div id="stSite" style="color:#00d4ff;font-weight:700;font-size:13px;margin-left:4px">← Click a station</div>
+  <div id="stTime" style="color:#5a6a7a;font-size:10px"></div>
 </div>
 <div id="map"></div>
 <div id="status">
@@ -42,56 +41,98 @@ label{color:#5a6a7a;font-size:10px;text-transform:uppercase;letter-spacing:.06em
 </div>
 
 <script>
-// All 143 NWS NEXRAD stations with sr_bref
-const STATIONS = ["KABR","KABX","KAKQ","KAMA","KAMX","KAPX","KARX","KATX","KBBX","KBGM","KBHX","KBIS","KBLX","KBMX","KBOX","KBRO","KBUF","KBYX","KCAE","KCBW","KCBX","KCCX","KCLE","KCLX","KCRP","KCXX","KCYS","KDAX","KDDC","KDFX","KDGX","KDIX","KDLH","KDMX","KDOX","KDTX","KDVN","KDYX","KEAX","KEMX","KENX","KEOX","KEPZ","KESX","KEVX","KEWX","KEYX","KFCX","KFDR","KFDX","KFFC","KFSD","KFSX","KFTG","KFWS","KGGW","KGJX","KGLD","KGRB","KGRK","KGRR","KGSP","KGWX","KGYX","KHDC","KHDX","KHGX","KHNX","KHPX","KHTX","KICT","KICX","KILN","KILX","KIND","KINX","KIWA","KIWX","KJAX","KJGX","KJKL","KLBB","KLCH","KLGX","KLNX","KLOT","KLRX","KLSX","KLTX","KLVX","KLWX","KLZK","KMAF","KMAX","KMBX","KMHX","KMKX","KMLB","KMOB","KMPX","KMQT","KMRX","KMSX","KMTX","KMUX","KMVX","KMXX","KNKX","KNQA","KOAX","KOHX","KOKX","KOTX","KPAH","KPBZ","KPDT","KPOE","KPUX","KRAX","KRGX","KRIW","KRLX","KRTX","KSFX","KSGF","KSHV","KSJT","KSOX","KSRX","KTBW","KTFX","KTLX","KTWX","KTYX","KUDX","KUEX","KVAX","KVBX","KVNX","KVTX","KVWX","KYUX"];
-
-// Station coordinates for map centering
-const COORDS = {
-  KMOB:[30.68,-88.24],KBMX:[33.17,-86.77],KHTX:[34.93,-86.08],KGWX:[33.9,-88.33],
-  KNQA:[35.35,-89.87],KOHX:[36.25,-86.56],KLZK:[34.84,-92.26],KSHV:[32.45,-93.84],
-  KFWS:[32.57,-97.3],KEWX:[29.7,-98.03],KHGX:[29.47,-95.08],KLCH:[30.12,-93.22],
-  KCRP:[27.78,-97.51],KTLX:[35.33,-97.28],KINX:[36.18,-95.56],KICT:[37.65,-97.44],
-  KSRX:[35.29,-94.36],KDGX:[32.28,-89.98],KTBW:[27.71,-82.4],KJAX:[30.48,-81.7],
-  KMLB:[28.11,-80.65],KAMX:[25.61,-80.41],KBYX:[24.6,-81.7],KCLX:[32.66,-81.04],
-  KLTX:[33.99,-78.43],KAKQ:[36.98,-77.01],KMHX:[34.78,-76.88],KGYX:[43.89,-70.26],
-  KBOX:[41.96,-71.14],KDTX:[42.7,-83.47],KGRR:[42.89,-85.54],KILX:[40.15,-89.34],
-  KDVN:[41.61,-90.58],KMPX:[44.85,-93.56],KDLH:[46.84,-92.21],KMKX:[42.97,-88.55],
-  KGRB:[44.5,-88.11],KAPX:[44.91,-84.72],KOTX:[47.68,-117.63],KATX:[48.19,-122.49],
-  KRTX:[45.71,-122.97],KPDT:[45.69,-118.85],KLGX:[47.12,-124.11],KSFX:[43.1,-112.69],
-  KCBX:[43.49,-116.23],KMAX:[42.08,-122.72],KBBX:[39.49,-121.63],KBHX:[40.5,-124.29],
-  KDAX:[38.5,-121.68],KMUX:[37.15,-121.9],KVBX:[34.84,-120.4],KSOX:[33.82,-117.64],
-  KVTX:[34.41,-119.18],KEYX:[35.1,-117.56],KNKX:[32.92,-117.04],KEMX:[31.89,-110.63],
-  KEPZ:[31.87,-106.7],KHDX:[33.08,-106.12],KDFX:[29.27,-100.28],KFDR:[34.36,-98.97],
-  KINX:[36.18,-95.56],KSGF:[37.23,-93.4],KLSX:[38.7,-90.68],KIND:[39.7,-86.28],
-  KIWX:[41.36,-85.7],KPBZ:[40.53,-80.22],KPAH:[37.07,-88.77],KFFC:[33.36,-84.57],
-  KEOX:[31.46,-85.46],KVAX:[30.89,-83.0],KJGX:[32.68,-83.35],KGSP:[34.88,-82.22],
-  KFCX:[37.02,-80.27],KRLX:[38.31,-81.72],KCKB:[39.3,-80.35]
+const STATIONS = {
+  KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],
+  KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],
+  KBBX:[39.49,-121.63],KBGM:[42.2,-75.99],KBHX:[40.5,-124.29],KBIS:[46.77,-100.76],
+  KBLX:[45.85,-108.61],KBMX:[33.17,-86.77],KBOX:[41.96,-71.14],KBRO:[25.92,-97.42],
+  KBUF:[42.95,-78.74],KBYX:[24.6,-81.7],KCAE:[33.95,-81.12],KCBW:[46.04,-67.81],
+  KCBX:[43.49,-116.23],KCCX:[40.92,-78.0],KCLE:[41.41,-81.86],KCLX:[32.66,-81.04],
+  KCRP:[27.78,-97.51],KCXX:[44.51,-73.17],KCYS:[41.15,-104.81],KDAX:[38.5,-121.68],
+  KDDC:[37.76,-99.97],KDFX:[29.27,-100.28],KDGX:[32.28,-89.98],KDIX:[39.95,-74.41],
+  KDLH:[46.84,-92.21],KDMX:[41.73,-93.72],KDOX:[38.82,-75.44],KDTX:[42.7,-83.47],
+  KDVN:[41.61,-90.58],KDYX:[32.54,-99.25],KEAX:[38.81,-94.26],KEMX:[31.89,-110.63],
+  KENX:[42.59,-74.06],KEOX:[31.46,-85.46],KEPZ:[31.87,-106.7],KESX:[35.7,-114.89],
+  KEVX:[30.56,-85.92],KEWX:[29.7,-98.03],KEYX:[35.1,-117.56],KFCX:[37.02,-80.27],
+  KFDR:[34.36,-98.97],KFDX:[34.63,-103.63],KFFC:[33.36,-84.57],KFSD:[43.59,-96.73],
+  KFSX:[34.57,-111.2],KFTG:[39.79,-104.55],KFWS:[32.57,-97.3],KGGW:[48.21,-106.63],
+  KGJX:[39.06,-108.21],KGLD:[39.37,-101.7],KGRB:[44.5,-88.11],KGRK:[30.72,-97.38],
+  KGRR:[42.89,-85.54],KGSP:[34.88,-82.22],KGWX:[33.9,-88.33],KGYX:[43.89,-70.26],
+  KHDC:[30.54,-87.99],KHDX:[33.08,-106.12],KHGX:[29.47,-95.08],KHNX:[36.31,-119.63],
+  KHPX:[36.74,-87.28],KHTX:[34.93,-86.08],KICT:[37.65,-97.44],KICX:[37.59,-112.86],
+  KILN:[39.42,-83.82],KILX:[40.15,-89.34],KIND:[39.7,-86.28],KINX:[36.18,-95.56],
+  KIWA:[33.29,-111.67],KIWX:[41.36,-85.7],KJAX:[30.48,-81.7],KJGX:[32.68,-83.35],
+  KJKL:[37.59,-83.31],KLBB:[33.65,-101.81],KLCH:[30.12,-93.22],KLGX:[47.12,-124.11],
+  KLNX:[41.96,-100.58],KLOT:[41.6,-88.08],KLRX:[40.74,-116.8],KLSX:[38.7,-90.68],
+  KLTX:[33.99,-78.43],KLVX:[37.97,-85.94],KLWX:[38.98,-77.48],KLZK:[34.84,-92.26],
+  KMAF:[31.94,-102.19],KMAX:[42.08,-122.72],KMBX:[48.39,-100.86],KMHX:[34.78,-76.88],
+  KMKX:[42.97,-88.55],KMLB:[28.11,-80.65],KMOB:[30.68,-88.24],KMPX:[44.85,-93.56],
+  KMQT:[46.53,-87.55],KMRX:[36.17,-83.4],KMSX:[47.04,-113.99],KMTX:[41.26,-112.45],
+  KMUX:[37.15,-121.9],KMVX:[47.53,-97.33],KMXX:[32.54,-85.79],KNKX:[32.92,-117.04],
+  KNQA:[35.35,-89.87],KOAX:[41.32,-96.37],KOHX:[36.25,-86.56],KOKX:[40.87,-72.86],
+  KOTX:[47.68,-117.63],KPAH:[37.07,-88.77],KPBZ:[40.53,-80.22],KPDT:[45.69,-118.85],
+  KPOE:[31.16,-92.98],KPUX:[38.46,-104.18],KRAX:[35.66,-78.49],KRGX:[39.75,-119.46],
+  KRIW:[43.07,-108.48],KRLX:[38.31,-81.72],KRTX:[45.71,-122.97],KSFX:[43.1,-112.69],
+  KSGF:[37.23,-93.4],KSHV:[32.45,-93.84],KSJT:[31.37,-100.49],KSOX:[33.82,-117.64],
+  KSRX:[35.29,-94.36],KTBW:[27.71,-82.4],KTFX:[47.46,-111.38],KTLX:[35.33,-97.28],
+  KTWX:[38.99,-96.23],KTYX:[43.76,-75.68],KUDX:[44.12,-102.83],KUEX:[40.32,-98.44],
+  KVAX:[30.89,-83.0],KVBX:[34.84,-120.4],KVNX:[36.74,-98.13],KVTX:[34.41,-119.18],
+  KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]
 };
 
-let map, wmsLayer, cdTimer, cdVal;
+let map, wmsLayer, currentSite = null, cdTimer;
+let siteMarkers = {};
 
 window.onload = () => {
-  map = L.map('map', {center:[33,-87], zoom:7, zoomControl:false});
+  map = L.map('map', {center:[37,-96], zoom:5});
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     {subdomains:'abcd',maxZoom:19,attribution:'© CartoDB'}).addTo(map);
 
-  const sel = document.getElementById('site');
-  STATIONS.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s; o.textContent = s;
-    if (s === 'KMOB') o.selected = true;
-    sel.appendChild(o);
-  });
+  // Add all station markers
+  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
+    const marker = L.circleMarker([lat, lng], {
+      radius: 5,
+      color: '#00d4ff',
+      fillColor: '#003344',
+      fillOpacity: 0.8,
+      weight: 1.5,
+      className: 'site-marker'
+    }).addTo(map);
 
-  loadSite();
+    const label = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: 'site-label',
+        html: id,
+        iconAnchor: [-7, 8]
+      }),
+      interactive: false
+    }).addTo(map);
+
+    marker.bindTooltip(id, {permanent: false, direction: 'top', className: 'site-label'});
+    marker.on('click', () => loadSite(id));
+    siteMarkers[id] = marker;
+  }
 };
 
-function loadSite() {
+function loadSite(id) {
   clearInterval(cdTimer);
-  const site = document.getElementById('site').value.toLowerCase();
+  currentSite = id;
+
+  // Highlight selected marker
+  for (const [sid, m] of Object.entries(siteMarkers)) {
+    m.setStyle({
+      color: sid === id ? '#ffcc00' : '#00d4ff',
+      fillColor: sid === id ? '#332200' : '#003344',
+      radius: sid === id ? 7 : 5,
+      weight: sid === id ? 2.5 : 1.5
+    });
+  }
+
+  const site = id.toLowerCase();
   const product = document.getElementById('product').value;
   const layer = `${site}:${site}_${product}`;
 
+  document.getElementById('stSite').textContent = id;
   document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ffcc00">Loading…</span>';
 
   if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer = null; }
@@ -115,19 +156,18 @@ function loadSite() {
     document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ff2d2d">Error</span>';
   });
 
-  // Center map on station
-  const site_upper = document.getElementById('site').value;
-  const coords = COORDS[site_upper];
+  // Center on station
+  const coords = STATIONS[id];
   if (coords) map.setView(coords, 8);
 }
 
 function startCountdown(secs) {
-  cdVal = secs;
-  document.getElementById('stNext').innerHTML = `Next <span>${cdVal}s</span>`;
+  let t = secs;
+  document.getElementById('stNext').innerHTML = `Next <span>${t}s</span>`;
   cdTimer = setInterval(() => {
-    cdVal--;
-    document.getElementById('stNext').innerHTML = `Next <span>${cdVal}s</span>`;
-    if (cdVal <= 0) { clearInterval(cdTimer); loadSite(); }
+    t--;
+    document.getElementById('stNext').innerHTML = `Next <span>${t}s</span>`;
+    if (t <= 0) { clearInterval(cdTimer); loadSite(currentSite); }
   }, 1000);
 }
 </script>
