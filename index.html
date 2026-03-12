@@ -45,6 +45,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 .site-pill.sel .site-dot{background:#38d9f5}
 .leaflet-div-icon{background:transparent!important;border:none!important}
 .leaflet-control-zoom a{background:#0d1117!important;color:#8aaabb!important;border-color:#253040!important}
+.radar-overlay{image-rendering:pixelated;image-rendering:crisp-edges}
 </style>
 </head>
 <body>
@@ -267,9 +268,10 @@ function drawFrame(f) {
     radarOverlay.setBounds(bounds);
   } else {
     radarOverlay = L.imageOverlay(dataUrl, bounds, {
-      opacity: 0.85,
+      opacity: 0.92,
       zIndex: 400,
       interactive: false,
+      className: 'radar-overlay',
     }).addTo(map);
   }
 }

@@ -201,50 +201,24 @@ function render(parsed, sz) {
 
   for (let py = 0; py < sz; py++) {
     const dy = -(py - cy) * kmPx;
+    const dy2 = dy * dy;
     for (let px = 0; px < sz; px++) {
       const dx = (px - cx) * kmPx;
-      const rKm = Math.sqrt(dx*dx + dy*dy);
-      const rM  = rKm * 1000;
+      const rM = Math.sqrt(dx*dx + dy2) * 1000;
       if (rM < firstGateM || rM > maxRangeM) continue;
 
       let az = Math.atan2(dx, dy) * 180 / Math.PI;
       if (az < 0) az += 360;
+      const azBin   = Math.floor(az * 2) % NUM_AZ;
+      const gateIdx = Math.floor((rM - firstGateM) / gateSizeM);
+      if (gateIdx >= numGates) continue;
 
-      // Interpolate between neighbouring azimuth bins to fill gaps
-      const azF    = az * 2;            // float bin index
-      const az0    = Math.floor(azF) % NUM_AZ;
-      const az1    = (az0 + 1) % NUM_AZ;
-      const azT    = azF - Math.floor(azF); // 0..1
-
-      const gateF   = (rM - firstGateM) / gateSizeM;
-      const g0      = Math.floor(gateF);
-      const g1      = Math.min(g0 + 1, numGates - 1);
-      const gT      = gateF - g0;
-
-      if (g0 >= numGates) continue;
-
-      // Bilinear interpolation across azimuth + range
-      const v00 = radialData[az0 * numGates + g0];
-      const v10 = radialData[az1 * numGates + g0];
-      const v01 = radialData[az0 * numGates + g1];
-      const v11 = radialData[az1 * numGates + g1];
-
-      // Treat no-data (-999) as transparent — only render if we have real data nearby
-      const hasData = v00 > -32 || v10 > -32 || v01 > -32 || v11 > -32;
-      if (!hasData) continue;
-
-      // Use nearest valid value for no-data cells
-      const safe00 = v00 > -32 ? v00 : (v10 > -32 ? v10 : (v01 > -32 ? v01 : v11));
-      const safe10 = v10 > -32 ? v10 : safe00;
-      const safe01 = v01 > -32 ? v01 : safe00;
-      const safe11 = v11 > -32 ? v11 : safe00;
-
-      const dbz = (1-azT)*(1-gT)*safe00 + azT*(1-gT)*safe10
-                + (1-azT)*gT   *safe01 + azT*gT    *safe11;
+      const dbz = radialData[azBin * numGates + gateIdx];
+      if (dbz < -32) continue;
 
       const pi = (py * sz + px) * 4;
       dbzColor(dbz, pixels, pi);
-      pixels[pi+3] = 215;
+      pixels[pi+3] = 230;
     }
   }
   return { pixels, width: sz, height: sz, maxRangeKm };
