@@ -1,9 +1,9 @@
-// Cloudflare Pages Function — NOAA S3 NEXRAD Level-2 proxy with CORS
+// Cloudflare Pages Function — NOMADS NEXRAD Level-2 proxy
 // Routes:
-//   GET /radar/list/KXXX   → JSON array of S3 keys (last 30 scans)
-//   GET /radar/file/KEY    → raw Level-2 bytes (KEY = full S3 path)
+//   GET /radar/list/KXXX          → JSON array of {filename, label} for last 30 scans
+//   GET /radar/file/KXXX/filename → raw bzip2 Level-2 bytes
 
-const S3_BASE = 'https://noaa-nexrad-level2.s3.amazonaws.com';
+const NOMADS = 'https://nomads.ncep.noaa.gov/pub/data/nccf/radar/nexrad_level2';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -22,30 +22,24 @@ export async function onRequest(context) {
     const site = path.slice(5).toUpperCase().replace(/[^A-Z]/g, '');
     if (site.length !== 4) return new Response('Bad site', { status: 400, headers: CORS });
 
-    const keys = [];
-    const now  = new Date();
+    const dirUrl = `${NOMADS}/${site}/`;
+    const r = await fetch(dirUrl, { cf: { cacheTtl: 30 } });
+    if (!r.ok) return new Response('NOMADS error ' + r.status, { status: 502, headers: CORS });
 
-    // Check today and yesterday (handles files near midnight)
-    for (let d = 0; d <= 1; d++) {
-      const t    = new Date(now.getTime() - d * 86400000);
-      const yyyy = t.getUTCFullYear();
-      const mm   = String(t.getUTCMonth() + 1).padStart(2, '0');
-      const dd   = String(t.getUTCDate()).padStart(2, '0');
-      const prefix = `${yyyy}/${mm}/${dd}/${site}/`;
-      const listUrl = `${S3_BASE}?prefix=${prefix}&max-keys=200`;
+    const html = await r.text();
 
-      const r = await fetch(listUrl, { cf: { cacheTtl: 30, cacheEverything: false } });
-      const xml = await r.text();
-
-      for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) {
-        const key = m[1];
-        if (!key.endsWith('_MDM')) keys.push(key); // skip metadata files
-      }
+    // Parse all .bz2 filenames from the Apache directory listing
+    // Format: KXXX_YYYYMMDD_HHMMSS.bz2
+    const re = /href="(K[A-Z]{3}_\d{8}_\d{6}\.bz2)"/g;
+    const files = [];
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      files.push(m[1]);
     }
 
-    // Sort ascending (oldest first), keep last 30
-    keys.sort();
-    const recent = keys.slice(-30);
+    // Sort ascending, keep last 30
+    files.sort();
+    const recent = files.slice(-30);
 
     return new Response(JSON.stringify(recent), {
       headers: {
@@ -56,13 +50,13 @@ export async function onRequest(context) {
     });
   }
 
-  // ── FILE: /radar/file/YYYY/MM/DD/KXXX/filename ────────────────────────
+  // ── FILE: /radar/file/KXXX/filename ──────────────────────────────────
   if (path.startsWith('file/')) {
-    const s3key = path.slice(5);
-    const s3url = `${S3_BASE}/${s3key}`;
+    const rest = path.slice(5); // KXXX/filename
+    const fileUrl = `${NOMADS}/${rest}`;
 
-    const r = await fetch(s3url, { cf: { cacheTtl: 86400, cacheEverything: true } });
-    if (!r.ok) return new Response(`S3 ${r.status}`, { status: r.status, headers: CORS });
+    const r = await fetch(fileUrl, { cf: { cacheTtl: 86400, cacheEverything: true } });
+    if (!r.ok) return new Response('NOMADS ' + r.status, { status: r.status, headers: CORS });
 
     return new Response(r.body, {
       status: 200,
