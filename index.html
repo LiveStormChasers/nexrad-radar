@@ -303,24 +303,63 @@ async function decodeWise(ab){
 // ── Composite Renderer (2D Canvas → Leaflet imageOverlay) ───────────────────
 // This is simple and correct: decode → colorize → overlay on map bounds
 function dataToCanvas(data, lut) {
-  // data: Uint8Array of MRMS_COLS × MRMS_ROWS values
-  // The MRMS grid is row-major, top-to-bottom (row 0 = lat 54.995, last row = lat 20.005)
-  // We render directly: row 0 → top of canvas, matching the bounds overlay
-  const canvas = document.createElement('canvas');
-  canvas.width = MRMS_COLS;
-  canvas.height = MRMS_ROWS;
-  const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(MRMS_COLS, MRMS_ROWS);
-  const px = img.data;
-  for(let i=0; i<MRMS_COLS*MRMS_ROWS; i++){
-    const v=data[i];
-    const li=v*4;
-    px[i*4]  =lut[li];
-    px[i*4+1]=lut[li+1];
-    px[i*4+2]=lut[li+2];
-    px[i*4+3]=lut[li+3];
+  // Clutter removal via vertical erosion: MRMS ground clutter appears as 1-4 row tall
+  // horizontal bands. Real precipitation spans 50+ rows. We remove any pixel not part
+  // of a vertical run of ≥5 consecutive above-threshold raw pixels in its column.
+  // Then box-filter downsample to 1400×700 for clean rendering.
+  const BSZ = 5;
+  const OUT_W = MRMS_COLS / BSZ;  // 1400
+  const OUT_H = MRMS_ROWS / BSZ;  // 700
+  const DBZ_THRESH = 74;          // val=74 → 5 dBZ
+  const MIN_VERT = 5;             // minimum vertical run length in raw pixels
+
+  // Pass 1: column-by-column vertical erosion on raw 7000×3500
+  const survived = new Uint8Array(MRMS_COLS * MRMS_ROWS);
+  for (let x = 0; x < MRMS_COLS; x++) {
+    let y = 0;
+    while (y < MRMS_ROWS) {
+      const v = data[y * MRMS_COLS + x];
+      if (v >= DBZ_THRESH && v < 255) {
+        const runStart = y;
+        while (y < MRMS_ROWS) {
+          const vv = data[y * MRMS_COLS + x];
+          if (vv >= DBZ_THRESH && vv < 255) y++;
+          else break;
+        }
+        if (y - runStart >= MIN_VERT) {
+          for (let ry = runStart; ry < y; ry++) survived[ry * MRMS_COLS + x] = 1;
+        }
+      } else { y++; }
+    }
   }
-  ctx.putImageData(img,0,0);
+
+  // Pass 2: box-filter downsample using only survived pixels
+  const canvas = document.createElement('canvas');
+  canvas.width = OUT_W; canvas.height = OUT_H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(OUT_W, OUT_H);
+  const px = img.data;
+  for (let oy = 0; oy < OUT_H; oy++) {
+    for (let ox = 0; ox < OUT_W; ox++) {
+      let sumR=0, sumG=0, sumB=0, n=0;
+      const sx0=ox*BSZ, sy0=oy*BSZ;
+      for (let dy=0; dy<BSZ; dy++) {
+        for (let dx=0; dx<BSZ; dx++) {
+          const ri=(sy0+dy)*MRMS_COLS+(sx0+dx);
+          if (survived[ri]) {
+            const v=data[ri];
+            sumR+=lut[v*4]; sumG+=lut[v*4+1]; sumB+=lut[v*4+2]; n++;
+          }
+        }
+      }
+      if (n > 0) {
+        const oi=(oy*OUT_W+ox)*4;
+        px[oi]=sumR/n; px[oi+1]=sumG/n; px[oi+2]=sumB/n;
+        px[oi+3]=Math.min(255, Math.round(n/(BSZ*BSZ)*280));
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   return canvas;
 }
 
