@@ -9,23 +9,17 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0c0f;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-
 #bar{display:flex;align-items:center;gap:12px;padding:7px 16px;background:#111418ee;border-bottom:1px solid #ffffff12;flex-shrink:0;backdrop-filter:blur(10px);z-index:1000}
 .logo{font-size:15px;font-weight:800;color:#2df0ff;letter-spacing:.08em}
-#stSite{font-size:13px;font-weight:700;color:#fff}
+#stSite{font-size:13px;font-weight:700;color:#5a7a9a}
 .spacer{flex:1}
 select{background:#1a2230;border:1px solid #2a3a50;color:#d0e0f0;font-size:11px;padding:5px 12px;border-radius:20px;cursor:pointer;outline:none}
 select:hover{border-color:#2df0ff55}
 #liveTag{font-size:10px;font-weight:700;color:#2df0ff;background:#2df0ff20;border:1px solid #2df0ff40;border-radius:10px;padding:2px 8px;display:none}
-
 #map{flex:1;position:relative}
-
-/* LEGEND */
 #legend{position:absolute;top:12px;left:12px;z-index:800;background:#111418cc;border:1px solid #ffffff15;border-radius:12px;padding:8px 12px;backdrop-filter:blur(8px);pointer-events:none}
-#legend-bar{width:220px;height:8px;border-radius:4px;margin-bottom:4px;background:linear-gradient(to right,rgb(115,77,172) 0.00%,rgb(115,78,168) 0.40%,rgb(115,79,165) 0.79%,rgb(115,81,162) 1.19%,rgb(116,82,158) 1.58%,rgb(116,84,155) 1.98%,rgb(116,85,152) 2.37%,rgb(117,86,148) 2.77%,rgb(117,88,145) 3.16%,rgb(117,89,142) 3.56%,rgb(118,91,138) 3.95%,rgb(118,92,135) 4.35%,rgb(118,94,132) 4.74%,rgb(119,95,128) 5.14%,rgb(119,96,125) 5.53%,rgb(119,98,122) 5.93%,rgb(120,99,118) 6.32%,rgb(120,101,115) 6.72%,rgb(120,102,112) 7.11%,rgb(121,103,108) 7.51%,rgb(121,105,105) 7.91%,rgb(121,106,102) 8.30%,rgb(122,108,98) 8.70%,rgb(122,109,95) 9.09%,rgb(122,111,92) 9.49%,rgb(123,112,88) 9.88%,rgb(123,113,85) 10.28%,rgb(123,115,82) 10.67%,rgb(124,116,78) 11.07%,rgb(124,118,75) 11.46%,rgb(124,119,72) 11.86%,rgb(125,121,69) 12.25%,rgb(127,123,72) 12.65%,rgb(129,125,75) 13.04%,rgb(131,127,79) 13.44%,rgb(133,130,82) 13.83%,rgb(135,132,85) 14.23%,rgb(137,134,89) 14.62%,rgb(139,137,92) 15.02%,rgb(141,139,96) 15.42%,rgb(144,141,99) 15.81%,rgb(146,144,102) 16.21%,rgb(148,146,106) 16.60%,rgb(150,148,109) 17.00%,rgb(152,151,113) 17.39%,rgb(154,153,116) 17.79%,rgb(156,155,119) 18.18%,rgb(158,158,123) 18.58%,rgb(161,160,126) 18.97%,rgb(163,162,130) 19.37%,rgb(165,165,133) 19.76%,rgb(167,167,136) 20.16%,rgb(169,169,140) 20.55%,rgb(171,172,143) 20.95%,rgb(173,174,147) 21.34%,rgb(175,176,150) 21.74%,rgb(178,179,154) 22.13%,rgb(173,175,153) 22.53%,rgb(168,171,152) 22.92%,rgb(163,167,151) 23.32%,rgb(158,163,150) 23.72%,rgb(154,159,149) 24.11%,rgb(149,155,148) 24.51%,rgb(144,151,147) 24.90%,rgb(139,147,146) 25.30%,rgb(135,144,145) 25.69%,rgb(130,140,144) 26.09%,rgb(125,136,143) 26.48%,rgb(120,132,142) 26.88%,rgb(115,128,142) 27.27%,rgb(111,124,141) 27.67%,rgb(106,120,140) 28.06%,rgb(101,116,139) 28.46%,rgb(96,112,138) 28.85%,rgb(92,109,137) 29.25%,rgb(87,105,136) 29.64%,rgb(82,101,135) 30.04%,rgb(77,97,134) 30.43%,rgb(73,93,133) 30.83%,rgb(68,89,132) 31.23%,rgb(63,85,131) 31.62%,rgb(58,81,130) 32.02%,rgb(54,78,130) 32.41%,rgb(55,81,132) 32.81%,rgb(57,85,134) 33.20%,rgb(59,89,136) 33.60%,rgb(61,93,138) 33.99%,rgb(63,97,141) 34.39%,rgb(65,101,143) 34.78%,rgb(67,105,145) 35.18%,rgb(69,109,147) 35.57%,rgb(71,113,149) 35.97%,rgb(73,117,152) 36.36%,rgb(74,121,154) 36.76%,rgb(76,125,156) 37.15%,rgb(78,129,158) 37.55%,rgb(80,133,160) 37.94%,rgb(82,137,163) 38.34%,rgb(84,141,165) 38.74%,rgb(86,145,167) 39.13%,rgb(88,149,169) 39.53%,rgb(90,153,171) 39.92%,rgb(92,157,174) 40.32%,rgb(76,165,142) 40.71%,rgb(60,173,110) 41.11%,rgb(45,182,78) 41.50%,rgb(42,175,72) 41.90%,rgb(39,169,67) 42.29%,rgb(37,163,62) 42.69%,rgb(34,156,56) 43.08%,rgb(31,150,51) 43.48%,rgb(29,144,46) 43.87%,rgb(26,137,40) 44.27%,rgb(24,131,35) 44.66%,rgb(21,125,30) 45.06%,rgb(18,118,24) 45.45%,rgb(16,112,19) 45.85%,rgb(13,106,14) 46.25%,rgb(11,100,9) 46.64%,rgb(35,115,8) 47.04%,rgb(59,130,7) 47.43%,rgb(83,145,6) 47.83%,rgb(107,161,5) 48.22%,rgb(131,176,4) 48.62%,rgb(155,191,3) 49.01%,rgb(179,207,2) 49.41%,rgb(203,222,1) 49.80%,rgb(227,237,0) 50.20%,rgb(252,253,0) 50.59%,rgb(248,248,0) 50.99%,rgb(244,243,0) 51.38%,rgb(241,238,0) 51.78%,rgb(237,233,0) 52.17%,rgb(233,228,0) 52.57%,rgb(230,223,0) 52.96%,rgb(226,218,0) 53.36%,rgb(222,213,0) 53.75%,rgb(219,208,0) 54.15%,rgb(215,203,0) 54.55%,rgb(211,198,0) 54.94%,rgb(208,193,0) 55.34%,rgb(204,188,0) 55.73%,rgb(200,183,0) 56.13%,rgb(197,179,0) 56.52%,rgb(250,148,0) 56.92%,rgb(246,144,0) 57.31%,rgb(242,141,1) 57.71%,rgb(238,138,1) 58.10%,rgb(234,135,2) 58.50%,rgb(231,132,3) 58.89%,rgb(227,129,3) 59.29%,rgb(223,126,4) 59.68%,rgb(219,123,5) 60.08%,rgb(215,120,5) 60.47%,rgb(212,116,6) 60.87%,rgb(208,113,6) 61.26%,rgb(204,110,7) 61.66%,rgb(200,107,8) 62.06%,rgb(196,104,8) 62.45%,rgb(193,101,9) 62.85%,rgb(189,98,10) 63.24%,rgb(185,95,10) 63.64%,rgb(181,92,11) 64.03%,rgb(178,89,12) 64.43%,rgb(249,35,11) 64.82%,rgb(242,35,12) 65.22%,rgb(236,35,13) 65.61%,rgb(230,35,14) 66.01%,rgb(223,36,15) 66.40%,rgb(217,36,16) 66.80%,rgb(211,36,17) 67.19%,rgb(205,36,18) 67.59%,rgb(198,37,19) 67.98%,rgb(192,37,20) 68.38%,rgb(186,37,22) 68.77%,rgb(180,37,23) 69.17%,rgb(173,38,24) 69.57%,rgb(167,38,25) 69.96%,rgb(161,38,26) 70.36%,rgb(155,38,27) 70.75%,rgb(148,39,28) 71.15%,rgb(142,39,29) 71.54%,rgb(136,39,30) 71.94%,rgb(130,40,32) 72.33%,rgb(202,153,180) 72.73%,rgb(201,146,176) 73.12%,rgb(201,139,173) 73.52%,rgb(200,133,169) 73.91%,rgb(200,126,166) 74.31%,rgb(199,120,162) 74.70%,rgb(199,113,159) 75.10%,rgb(199,106,155) 75.49%,rgb(198,100,152) 75.89%,rgb(198,93,148) 76.28%,rgb(197,87,145) 76.68%,rgb(197,80,141) 77.08%,rgb(196,74,138) 77.47%,rgb(196,67,134) 77.87%,rgb(196,60,131) 78.26%,rgb(195,54,127) 78.66%,rgb(195,47,124) 79.05%,rgb(194,41,120) 79.45%,rgb(194,34,117) 79.84%,rgb(194,28,114) 80.24%,rgb(154,36,224) 80.63%,rgb(149,34,219) 81.03%,rgb(144,33,215) 81.42%,rgb(139,32,210) 81.82%,rgb(134,31,206) 82.21%,rgb(129,30,201) 82.61%,rgb(124,29,197) 83.00%,rgb(120,28,193) 83.40%,rgb(115,27,188) 83.79%,rgb(110,26,184) 84.19%,rgb(105,24,179) 84.58%,rgb(100,23,175) 84.98%,rgb(95,22,170) 85.38%,rgb(91,21,166) 85.77%,rgb(86,20,162) 86.17%,rgb(81,19,157) 86.56%,rgb(76,18,153) 86.96%,rgb(71,17,148) 87.35%,rgb(66,16,144) 87.75%,rgb(62,15,140) 88.14%,rgb(132,253,255) 88.54%,rgb(128,245,249) 88.93%,rgb(125,238,243) 89.33%,rgb(121,231,237) 89.72%,rgb(118,224,231) 90.12%,rgb(115,217,225) 90.51%,rgb(111,210,219) 90.91%,rgb(108,203,213) 91.30%,rgb(105,196,207) 91.70%,rgb(101,189,201) 92.09%,rgb(98,181,196) 92.49%,rgb(94,174,190) 92.89%,rgb(91,167,184) 93.28%,rgb(88,160,178) 93.68%,rgb(84,153,172) 94.07%,rgb(81,146,166) 94.47%,rgb(78,139,160) 94.86%,rgb(74,132,154) 95.26%,rgb(71,125,148) 95.65%,rgb(68,118,143) 96.05%,rgb(161,101,73) 96.44%,rgb(155,90,65) 96.84%,rgb(150,80,56) 97.23%,rgb(145,70,48) 97.63%,rgb(140,60,40) 98.02%,rgb(135,50,32) 98.42%,rgb(130,40,24) 98.81%,rgb(125,30,16) 99.21%,rgb(120,20,8) 99.60%,rgb(115,10,1) 100.00%)}
+#legend-bar{width:220px;height:8px;border-radius:4px;margin-bottom:4px;background:linear-gradient(to right,rgb(0,0,0) 0.00%,rgb(0,0,0) 0.39%,rgb(0,0,0) 0.79%,rgb(0,0,0) 1.18%,rgb(0,0,0) 1.57%,rgb(0,0,0) 1.97%,rgb(0,0,0) 2.36%,rgb(0,0,0) 2.76%,rgb(0,0,0) 3.15%,rgb(0,0,0) 3.54%,rgb(0,0,0) 3.94%,rgb(0,0,0) 4.33%,rgb(0,0,0) 4.72%,rgb(0,0,0) 5.12%,rgb(0,0,0) 5.51%,rgb(0,0,0) 5.91%,rgb(0,0,0) 6.30%,rgb(0,0,0) 6.69%,rgb(0,0,0) 7.09%,rgb(0,0,0) 7.48%,rgb(0,0,0) 7.87%,rgb(0,0,0) 8.27%,rgb(0,0,0) 8.66%,rgb(0,0,0) 9.06%,rgb(0,0,0) 9.45%,rgb(0,0,0) 9.84%,rgb(0,0,0) 10.24%,rgb(0,0,0) 10.63%,rgb(0,0,0) 11.02%,rgb(0,0,0) 11.42%,rgb(0,0,0) 11.81%,rgb(0,0,0) 12.20%,rgb(0,0,0) 12.60%,rgb(0,0,0) 12.99%,rgb(0,0,0) 13.39%,rgb(0,0,0) 13.78%,rgb(0,0,0) 14.17%,rgb(0,0,0) 14.57%,rgb(0,0,0) 14.96%,rgb(0,0,0) 15.35%,rgb(0,0,0) 15.75%,rgb(0,0,0) 16.14%,rgb(0,0,0) 16.54%,rgb(0,0,0) 16.93%,rgb(0,0,0) 17.32%,rgb(0,0,0) 17.72%,rgb(0,0,0) 18.11%,rgb(0,0,0) 18.50%,rgb(0,0,0) 18.90%,rgb(0,0,0) 19.29%,rgb(0,0,0) 19.69%,rgb(0,0,0) 20.08%,rgb(0,0,0) 20.47%,rgb(0,0,0) 20.87%,rgb(0,0,0) 21.26%,rgb(1,2,3) 21.65%,rgb(3,4,6) 22.05%,rgb(4,6,9) 22.44%,rgb(6,7,12) 22.83%,rgb(7,9,15) 23.23%,rgb(9,11,18) 23.62%,rgb(10,13,21) 24.02%,rgb(12,15,24) 24.41%,rgb(13,17,27) 24.80%,rgb(14,18,30) 25.20%,rgb(16,20,33) 25.59%,rgb(17,22,36) 25.98%,rgb(19,24,39) 26.38%,rgb(20,26,42) 26.77%,rgb(22,28,45) 27.17%,rgb(23,30,48) 27.56%,rgb(25,31,51) 27.95%,rgb(26,33,54) 28.35%,rgb(28,35,57) 28.74%,rgb(29,37,60) 29.13%,rgb(31,42,64) 29.53%,rgb(34,46,69) 29.92%,rgb(36,51,73) 30.31%,rgb(39,56,78) 30.71%,rgb(41,61,82) 31.10%,rgb(43,65,87) 31.50%,rgb(46,70,91) 31.89%,rgb(48,75,96) 32.28%,rgb(51,79,100) 32.68%,rgb(53,84,104) 33.07%,rgb(55,89,109) 33.46%,rgb(58,94,113) 33.86%,rgb(60,98,118) 34.25%,rgb(63,103,122) 34.65%,rgb(65,108,127) 35.04%,rgb(67,113,131) 35.43%,rgb(70,117,135) 35.83%,rgb(72,122,140) 36.22%,rgb(75,127,144) 36.61%,rgb(77,131,149) 37.01%,rgb(79,136,153) 37.40%,rgb(82,141,158) 37.80%,rgb(84,146,162) 38.19%,rgb(87,150,167) 38.58%,rgb(89,155,171) 38.98%,rgb(83,158,161) 39.37%,rgb(78,161,151) 39.76%,rgb(72,164,141) 40.16%,rgb(67,167,131) 40.55%,rgb(61,170,122) 40.94%,rgb(55,174,112) 41.34%,rgb(50,177,102) 41.73%,rgb(44,180,92) 42.13%,rgb(39,183,82) 42.52%,rgb(33,186,72) 42.91%,rgb(32,182,68) 43.31%,rgb(30,178,65) 43.70%,rgb(29,173,61) 44.09%,rgb(27,169,58) 44.49%,rgb(26,165,54) 44.88%,rgb(25,160,51) 45.28%,rgb(23,156,47) 45.67%,rgb(22,152,44) 46.06%,rgb(20,148,40) 46.46%,rgb(19,144,36) 46.85%,rgb(18,139,33) 47.24%,rgb(16,135,29) 47.64%,rgb(15,131,26) 48.03%,rgb(13,126,22) 48.43%,rgb(12,122,19) 48.82%,rgb(11,118,15) 49.21%,rgb(9,114,12) 49.61%,rgb(8,110,8) 50.00%,rgb(6,105,5) 50.39%,rgb(5,101,1) 50.79%,rgb(30,116,1) 51.18%,rgb(54,131,1) 51.57%,rgb(79,146,1) 51.97%,rgb(103,161,1) 52.36%,rgb(128,176,0) 52.76%,rgb(153,192,0) 53.15%,rgb(177,207,0) 53.54%,rgb(202,222,0) 53.94%,rgb(226,237,0) 54.33%,rgb(199,176,0) 54.72%,rgb(204,173,0) 55.12%,rgb(210,171,0) 55.51%,rgb(215,168,1) 55.91%,rgb(221,165,1) 56.30%,rgb(226,162,1) 56.69%,rgb(231,160,1) 57.09%,rgb(237,157,1) 57.48%,rgb(242,154,2) 57.87%,rgb(248,152,2) 58.27%,rgb(172,92,2) 58.66%,rgb(177,88,2) 59.06%,rgb(183,85,2) 59.45%,rgb(188,81,2) 59.84%,rgb(194,78,1) 60.24%,rgb(199,74,1) 60.63%,rgb(204,70,1) 61.02%,rgb(210,67,1) 61.42%,rgb(215,63,1) 61.81%,rgb(221,60,1) 62.20%,rgb(226,56,1) 62.60%,rgb(231,52,1) 62.99%,rgb(237,49,0) 63.39%,rgb(242,45,0) 63.78%,rgb(248,42,0) 64.17%,rgb(135,43,22) 64.57%,rgb(138,48,30) 64.96%,rgb(141,54,38) 65.35%,rgb(144,59,46) 65.75%,rgb(147,64,53) 66.14%,rgb(150,69,61) 66.54%,rgb(152,74,69) 66.93%,rgb(155,80,77) 67.32%,rgb(158,85,85) 67.72%,rgb(161,90,93) 68.11%,rgb(164,96,100) 68.50%,rgb(167,101,108) 68.90%,rgb(170,106,116) 69.29%,rgb(173,111,124) 69.69%,rgb(176,116,132) 70.08%,rgb(178,122,140) 70.47%,rgb(181,127,148) 70.87%,rgb(184,132,155) 71.26%,rgb(187,138,163) 71.65%,rgb(190,143,171) 72.05%,rgb(200,23,119) 72.44%,rgb(198,22,124) 72.83%,rgb(196,21,129) 73.23%,rgb(195,20,133) 73.62%,rgb(193,19,138) 74.02%,rgb(191,18,143) 74.41%,rgb(190,17,148) 74.80%,rgb(188,16,153) 75.20%,rgb(186,15,157) 75.59%,rgb(184,14,162) 75.98%,rgb(182,12,167) 76.38%,rgb(181,11,172) 76.77%,rgb(179,10,177) 77.17%,rgb(177,9,181) 77.56%,rgb(176,8,186) 77.95%,rgb(174,7,191) 78.35%,rgb(172,6,196) 78.74%,rgb(170,5,201) 79.13%,rgb(168,4,205) 79.53%,rgb(167,3,210) 79.92%,rgb(64,0,146) 80.31%,rgb(71,26,157) 80.71%,rgb(78,51,167) 81.10%,rgb(85,76,178) 81.50%,rgb(92,102,189) 81.89%,rgb(100,128,200) 82.28%,rgb(107,153,210) 82.68%,rgb(114,178,221) 83.07%,rgb(121,204,232) 83.46%,rgb(128,230,242) 83.86%,rgb(54,120,142) 84.25%,rgb(66,118,134) 84.65%,rgb(78,116,126) 85.04%,rgb(90,114,119) 85.43%,rgb(102,112,111) 85.83%,rgb(114,110,103) 86.22%,rgb(125,107,95) 86.61%,rgb(137,105,87) 87.01%,rgb(149,103,80) 87.40%,rgb(161,101,72) 87.80%,rgb(173,99,64) 88.19%,rgb(166,89,58) 88.58%,rgb(159,79,52) 88.98%,rgb(153,69,46) 89.37%,rgb(146,59,40) 89.76%,rgb(139,50,34) 90.16%,rgb(132,40,28) 90.55%,rgb(125,30,22) 90.94%,rgb(119,20,16) 91.34%,rgb(112,10,10) 91.73%,rgb(105,0,4) 92.13%,rgb(100,0,4) 92.52%,rgb(94,0,4) 92.91%,rgb(89,0,3) 93.31%,rgb(84,0,3) 93.70%,rgb(79,0,3) 94.09%,rgb(74,0,3) 94.49%,rgb(68,0,3) 94.88%,rgb(63,0,2) 95.28%,rgb(58,0,2) 95.67%,rgb(52,0,2) 96.06%,rgb(47,0,2) 96.46%,rgb(42,0,2) 96.85%,rgb(37,0,1) 97.24%,rgb(32,0,1) 97.64%,rgb(26,0,1) 98.03%,rgb(21,0,1) 98.43%,rgb(16,0,1) 98.82%,rgb(10,0,0) 99.21%,rgb(5,0,0) 99.61%,rgb(0,0,0) 100.00%)}
 #legend-labels{display:flex;justify-content:space-between;font-size:9px;color:#6a7a8a;width:220px}
-
-/* SLIDER */
 #sliderBar{flex-shrink:0;background:#0e1218;border-top:1px solid #ffffff10;padding:6px 16px 8px;user-select:none}
 #sliderRow{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .ctrl-btn{background:none;border:none;color:#5a7a9a;font-size:15px;cursor:pointer;padding:2px 8px;border-radius:6px;line-height:1;transition:color .15s}
@@ -38,8 +32,6 @@ select:hover{border-color:#2df0ff55}
 #ticksRow{position:absolute;left:0;right:0;top:0;height:100%;pointer-events:none}
 .tick{position:absolute;bottom:2px;width:2px;border-radius:1px;transform:translateX(-50%)}
 #frameTime{font-size:11px;color:#7a9ab0;text-align:center}
-
-/* STATION PILLS */
 .site-pill{display:inline-flex;align-items:center;gap:4px;background:#0e1520cc;border:1.5px solid #2df0ff44;border-radius:20px;padding:2px 7px 2px 5px;font-size:10px;font-weight:700;color:#9bbbd0;cursor:pointer;white-space:nowrap;backdrop-filter:blur(4px);transition:all .12s;box-shadow:0 1px 4px #00000066}
 .site-pill:hover{background:#1a2a3ccc;border-color:#2df0ffaa;color:#fff}
 .site-pill.selected{background:#2df0ff22;border-color:#2df0ff;color:#fff;box-shadow:0 0 10px #2df0ff44}
@@ -50,34 +42,31 @@ select:hover{border-color:#2df0ff55}
 </style>
 </head>
 <body>
-
 <div id="bar">
   <div class="logo">⚡ NEXRAD</div>
   <select id="product" onchange="onProductChange()">
     <option value="sr_bref">Reflectivity</option>
     <option value="sr_vel">Velocity</option>
   </select>
-  <div id="stSite" style="color:#5a7a9a">← Click a station</div>
+  <div id="stSite">← Click a station</div>
   <div class="spacer"></div>
   <div id="liveTag">● LIVE</div>
 </div>
-
 <div id="map">
   <div id="legend">
     <div id="legend-bar"></div>
     <div id="legend-labels">
-      <span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span>
+      <span>−15</span><span>20</span><span>40</span><span>60</span><span>80</span><span>95 dBZ</span>
     </div>
   </div>
 </div>
-
 <div id="sliderBar">
   <div id="sliderRow">
-    <button class="ctrl-btn" id="btnFirst" title="Oldest">⏮</button>
-    <button class="ctrl-btn" id="btnStep0" title="Step back">◀</button>
-    <button class="ctrl-btn" id="btnPlay" title="Play/Pause">▶</button>
-    <button class="ctrl-btn" id="btnStep1" title="Step forward">▶|</button>
-    <button class="ctrl-btn" id="btnLast" title="Latest">⏭</button>
+    <button class="ctrl-btn" id="btnFirst">⏮</button>
+    <button class="ctrl-btn" id="btnStep0">◀</button>
+    <button class="ctrl-btn" id="btnPlay">▶</button>
+    <button class="ctrl-btn" id="btnStep1">▶|</button>
+    <button class="ctrl-btn" id="btnLast">⏭</button>
     <div id="sliderTrack">
       <div id="sliderRail"></div>
       <div id="sliderFill"></div>
@@ -87,223 +76,145 @@ select:hover{border-color:#2df0ff55}
   </div>
   <div id="frameTime">Select a station to begin</div>
 </div>
-
 <script>
-// ── EXACT COLOR TABLE (254 stops, -32 to 94.5 dBZ, 0.5 step) ─────────────
-const COLOR_TABLE = [[115,77,172],[115,78,168],[115,79,165],[115,81,162],[116,82,158],[116,84,155],[116,85,152],[117,86,148],[117,88,145],[117,89,142],[118,91,138],[118,92,135],[118,94,132],[119,95,128],[119,96,125],[119,98,122],[120,99,118],[120,101,115],[120,102,112],[121,103,108],[121,105,105],[121,106,102],[122,108,98],[122,109,95],[122,111,92],[123,112,88],[123,113,85],[123,115,82],[124,116,78],[124,118,75],[124,119,72],[125,121,69],[127,123,72],[129,125,75],[131,127,79],[133,130,82],[135,132,85],[137,134,89],[139,137,92],[141,139,96],[144,141,99],[146,144,102],[148,146,106],[150,148,109],[152,151,113],[154,153,116],[156,155,119],[158,158,123],[161,160,126],[163,162,130],[165,165,133],[167,167,136],[169,169,140],[171,172,143],[173,174,147],[175,176,150],[178,179,154],[173,175,153],[168,171,152],[163,167,151],[158,163,150],[154,159,149],[149,155,148],[144,151,147],[139,147,146],[135,144,145],[130,140,144],[125,136,143],[120,132,142],[115,128,142],[111,124,141],[106,120,140],[101,116,139],[96,112,138],[92,109,137],[87,105,136],[82,101,135],[77,97,134],[73,93,133],[68,89,132],[63,85,131],[58,81,130],[54,78,130],[55,81,132],[57,85,134],[59,89,136],[61,93,138],[63,97,141],[65,101,143],[67,105,145],[69,109,147],[71,113,149],[73,117,152],[74,121,154],[76,125,156],[78,129,158],[80,133,160],[82,137,163],[84,141,165],[86,145,167],[88,149,169],[90,153,171],[92,157,174],[76,165,142],[60,173,110],[45,182,78],[42,175,72],[39,169,67],[37,163,62],[34,156,56],[31,150,51],[29,144,46],[26,137,40],[24,131,35],[21,125,30],[18,118,24],[16,112,19],[13,106,14],[11,100,9],[35,115,8],[59,130,7],[83,145,6],[107,161,5],[131,176,4],[155,191,3],[179,207,2],[203,222,1],[227,237,0],[252,253,0],[248,248,0],[244,243,0],[241,238,0],[237,233,0],[233,228,0],[230,223,0],[226,218,0],[222,213,0],[219,208,0],[215,203,0],[211,198,0],[208,193,0],[204,188,0],[200,183,0],[197,179,0],[250,148,0],[246,144,0],[242,141,1],[238,138,1],[234,135,2],[231,132,3],[227,129,3],[223,126,4],[219,123,5],[215,120,5],[212,116,6],[208,113,6],[204,110,7],[200,107,8],[196,104,8],[193,101,9],[189,98,10],[185,95,10],[181,92,11],[178,89,12],[249,35,11],[242,35,12],[236,35,13],[230,35,14],[223,36,15],[217,36,16],[211,36,17],[205,36,18],[198,37,19],[192,37,20],[186,37,22],[180,37,23],[173,38,24],[167,38,25],[161,38,26],[155,38,27],[148,39,28],[142,39,29],[136,39,30],[130,40,32],[202,153,180],[201,146,176],[201,139,173],[200,133,169],[200,126,166],[199,120,162],[199,113,159],[199,106,155],[198,100,152],[198,93,148],[197,87,145],[197,80,141],[196,74,138],[196,67,134],[196,60,131],[195,54,127],[195,47,124],[194,41,120],[194,34,117],[194,28,114],[154,36,224],[149,34,219],[144,33,215],[139,32,210],[134,31,206],[129,30,201],[124,29,197],[120,28,193],[115,27,188],[110,26,184],[105,24,179],[100,23,175],[95,22,170],[91,21,166],[86,20,162],[81,19,157],[76,18,153],[71,17,148],[66,16,144],[62,15,140],[132,253,255],[128,245,249],[125,238,243],[121,231,237],[118,224,231],[115,217,225],[111,210,219],[108,203,213],[105,196,207],[101,189,201],[98,181,196],[94,174,190],[91,167,184],[88,160,178],[84,153,172],[81,146,166],[78,139,160],[74,132,154],[71,125,148],[68,118,143],[161,101,73],[155,90,65],[150,80,56],[145,70,48],[140,60,40],[135,50,32],[130,40,24],[125,30,16],[120,20,8],[115,10,1]];
-const DBZ_MIN = -32, DBZ_STEP = 0.5;
+const STATIONS={KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],KBBX:[39.49,-121.63],KBGM:[42.2,-75.99],KBHX:[40.5,-124.29],KBIS:[46.77,-100.76],KBLX:[45.85,-108.61],KBMX:[33.17,-86.77],KBOX:[41.96,-71.14],KBRO:[25.92,-97.42],KBUF:[42.95,-78.74],KBYX:[24.6,-81.7],KCAE:[33.95,-81.12],KCBW:[46.04,-67.81],KCBX:[43.49,-116.23],KCCX:[40.92,-78.0],KCLE:[41.41,-81.86],KCLX:[32.66,-81.04],KCRP:[27.78,-97.51],KCXX:[44.51,-73.17],KCYS:[41.15,-104.81],KDAX:[38.5,-121.68],KDDC:[37.76,-99.97],KDFX:[29.27,-100.28],KDGX:[32.28,-89.98],KDIX:[39.95,-74.41],KDLH:[46.84,-92.21],KDMX:[41.73,-93.72],KDOX:[38.82,-75.44],KDTX:[42.7,-83.47],KDVN:[41.61,-90.58],KDYX:[32.54,-99.25],KEAX:[38.81,-94.26],KEMX:[31.89,-110.63],KENX:[42.59,-74.06],KEOX:[31.46,-85.46],KEPZ:[31.87,-106.7],KESX:[35.7,-114.89],KEVX:[30.56,-85.92],KEWX:[29.7,-98.03],KEYX:[35.1,-117.56],KFCX:[37.02,-80.27],KFDR:[34.36,-98.97],KFDX:[34.63,-103.63],KFFC:[33.36,-84.57],KFSD:[43.59,-96.73],KFSX:[34.57,-111.2],KFTG:[39.79,-104.55],KFWS:[32.57,-97.3],KGGW:[48.21,-106.63],KGJX:[39.06,-108.21],KGLD:[39.37,-101.7],KGRB:[44.5,-88.11],KGRK:[30.72,-97.38],KGRR:[42.89,-85.54],KGSP:[34.88,-82.22],KGWX:[33.9,-88.33],KGYX:[43.89,-70.26],KHDC:[30.54,-87.99],KHDX:[33.08,-106.12],KHGX:[29.47,-95.08],KHNX:[36.31,-119.63],KHPX:[36.74,-87.28],KHTX:[34.93,-86.08],KICT:[37.65,-97.44],KICX:[37.59,-112.86],KILN:[39.42,-83.82],KILX:[40.15,-89.34],KIND:[39.7,-86.28],KINX:[36.18,-95.56],KIWA:[33.29,-111.67],KIWX:[41.36,-85.7],KJAX:[30.48,-81.7],KJGX:[32.68,-83.35],KJKL:[37.59,-83.31],KLBB:[33.65,-101.81],KLCH:[30.12,-93.22],KLGX:[47.12,-124.11],KLNX:[41.96,-100.58],KLOT:[41.6,-88.08],KLRX:[40.74,-116.8],KLSX:[38.7,-90.68],KLTX:[33.99,-78.43],KLVX:[37.97,-85.94],KLWX:[38.98,-77.48],KLZK:[34.84,-92.26],KMAF:[31.94,-102.19],KMAX:[42.08,-122.72],KMBX:[48.39,-100.86],KMHX:[34.78,-76.88],KMKX:[42.97,-88.55],KMLB:[28.11,-80.65],KMOB:[30.68,-88.24],KMPX:[44.85,-93.56],KMQT:[46.53,-87.55],KMRX:[36.17,-83.4],KMSX:[47.04,-113.99],KMTX:[41.26,-112.45],KMUX:[37.15,-121.9],KMVX:[47.53,-97.33],KMXX:[32.54,-85.79],KNKX:[32.92,-117.04],KNQA:[35.35,-89.87],KOAX:[41.32,-96.37],KOHX:[36.25,-86.56],KOKX:[40.87,-72.86],KOTX:[47.68,-117.63],KPAH:[37.07,-88.77],KPBZ:[40.53,-80.22],KPDT:[45.69,-118.85],KPOE:[31.16,-92.98],KPUX:[38.46,-104.18],KRAX:[35.66,-78.49],KRGX:[39.75,-119.46],KRIW:[43.07,-108.48],KRLX:[38.31,-81.72],KRTX:[45.71,-122.97],KSFX:[43.1,-112.69],KSGF:[37.23,-93.4],KSHV:[32.45,-93.84],KSJT:[31.37,-100.49],KSOX:[33.82,-117.64],KSRX:[35.29,-94.36],KTBW:[27.71,-82.4],KTFX:[47.46,-111.38],KTLX:[35.33,-97.28],KTWX:[38.99,-96.23],KTYX:[43.76,-75.68],KUDX:[44.12,-102.83],KUEX:[40.32,-98.44],KVAX:[30.89,-83.0],KVBX:[34.84,-120.4],KVNX:[36.74,-98.13],KVTX:[34.41,-119.18],KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]};
 
-function dbzToHex(dbz) {
-  const idx = Math.round((dbz - DBZ_MIN) / DBZ_STEP);
-  const c = COLOR_TABLE[Math.max(0, Math.min(COLOR_TABLE.length-1, idx))];
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
+const COLOR_TABLE=[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[1,2,3],[3,4,6],[4,6,9],[6,7,12],[7,9,15],[9,11,18],[10,13,21],[12,15,24],[13,17,27],[14,18,30],[16,20,33],[17,22,36],[19,24,39],[20,26,42],[22,28,45],[23,30,48],[25,31,51],[26,33,54],[28,35,57],[29,37,60],[31,42,64],[34,46,69],[36,51,73],[39,56,78],[41,61,82],[43,65,87],[46,70,91],[48,75,96],[51,79,100],[53,84,104],[55,89,109],[58,94,113],[60,98,118],[63,103,122],[65,108,127],[67,113,131],[70,117,135],[72,122,140],[75,127,144],[77,131,149],[79,136,153],[82,141,158],[84,146,162],[87,150,167],[89,155,171],[83,158,161],[78,161,151],[72,164,141],[67,167,131],[61,170,122],[55,174,112],[50,177,102],[44,180,92],[39,183,82],[33,186,72],[32,182,68],[30,178,65],[29,173,61],[27,169,58],[26,165,54],[25,160,51],[23,156,47],[22,152,44],[20,148,40],[19,144,36],[18,139,33],[16,135,29],[15,131,26],[13,126,22],[12,122,19],[11,118,15],[9,114,12],[8,110,8],[6,105,5],[5,101,1],[30,116,1],[54,131,1],[79,146,1],[103,161,1],[128,176,0],[153,192,0],[177,207,0],[202,222,0],[226,237,0],[199,176,0],[204,173,0],[210,171,0],[215,168,1],[221,165,1],[226,162,1],[231,160,1],[237,157,1],[242,154,2],[248,152,2],[172,92,2],[177,88,2],[183,85,2],[188,81,2],[194,78,1],[199,74,1],[204,70,1],[210,67,1],[215,63,1],[221,60,1],[226,56,1],[231,52,1],[237,49,0],[242,45,0],[248,42,0],[135,43,22],[138,48,30],[141,54,38],[144,59,46],[147,64,53],[150,69,61],[152,74,69],[155,80,77],[158,85,85],[161,90,93],[164,96,100],[167,101,108],[170,106,116],[173,111,124],[176,116,132],[178,122,140],[181,127,148],[184,132,155],[187,138,163],[190,143,171],[200,23,119],[198,22,124],[196,21,129],[195,20,133],[193,19,138],[191,18,143],[190,17,148],[188,16,153],[186,15,157],[184,14,162],[182,12,167],[181,11,172],[179,10,177],[177,9,181],[176,8,186],[174,7,191],[172,6,196],[170,5,201],[168,4,205],[167,3,210],[64,0,146],[71,26,157],[78,51,167],[85,76,178],[92,102,189],[100,128,200],[107,153,210],[114,178,221],[121,204,232],[128,230,242],[54,120,142],[66,118,134],[78,116,126],[90,114,119],[102,112,111],[114,110,103],[125,107,95],[137,105,87],[149,103,80],[161,101,72],[173,99,64],[166,89,58],[159,79,52],[153,69,46],[146,59,40],[139,50,34],[132,40,28],[125,30,22],[119,20,16],[112,10,10],[105,0,4],[100,0,4],[94,0,4],[89,0,3],[84,0,3],[79,0,3],[74,0,3],[68,0,3],[63,0,2],[58,0,2],[52,0,2],[47,0,2],[42,0,2],[37,0,1],[32,0,1],[26,0,1],[21,0,1],[16,0,1],[10,0,0],[5,0,0],[0,0,0]];
+const DBZ_MIN=-32,DBZ_STEP=0.5;
 
-// ── STATIONS ──────────────────────────────────────────────────────────────
-const STATIONS = {
-  KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],
-  KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],
-  KBBX:[39.49,-121.63],KBGM:[42.2,-75.99],KBHX:[40.5,-124.29],KBIS:[46.77,-100.76],
-  KBLX:[45.85,-108.61],KBMX:[33.17,-86.77],KBOX:[41.96,-71.14],KBRO:[25.92,-97.42],
-  KBUF:[42.95,-78.74],KBYX:[24.6,-81.7],KCAE:[33.95,-81.12],KCBW:[46.04,-67.81],
-  KCBX:[43.49,-116.23],KCCX:[40.92,-78.0],KCLE:[41.41,-81.86],KCLX:[32.66,-81.04],
-  KCRP:[27.78,-97.51],KCXX:[44.51,-73.17],KCYS:[41.15,-104.81],KDAX:[38.5,-121.68],
-  KDDC:[37.76,-99.97],KDFX:[29.27,-100.28],KDGX:[32.28,-89.98],KDIX:[39.95,-74.41],
-  KDLH:[46.84,-92.21],KDMX:[41.73,-93.72],KDOX:[38.82,-75.44],KDTX:[42.7,-83.47],
-  KDVN:[41.61,-90.58],KDYX:[32.54,-99.25],KEAX:[38.81,-94.26],KEMX:[31.89,-110.63],
-  KENX:[42.59,-74.06],KEOX:[31.46,-85.46],KEPZ:[31.87,-106.7],KESX:[35.7,-114.89],
-  KEVX:[30.56,-85.92],KEWX:[29.7,-98.03],KEYX:[35.1,-117.56],KFCX:[37.02,-80.27],
-  KFDR:[34.36,-98.97],KFDX:[34.63,-103.63],KFFC:[33.36,-84.57],KFSD:[43.59,-96.73],
-  KFSX:[34.57,-111.2],KFTG:[39.79,-104.55],KFWS:[32.57,-97.3],KGGW:[48.21,-106.63],
-  KGJX:[39.06,-108.21],KGLD:[39.37,-101.7],KGRB:[44.5,-88.11],KGRK:[30.72,-97.38],
-  KGRR:[42.89,-85.54],KGSP:[34.88,-82.22],KGWX:[33.9,-88.33],KGYX:[43.89,-70.26],
-  KHDC:[30.54,-87.99],KHDX:[33.08,-106.12],KHGX:[29.47,-95.08],KHNX:[36.31,-119.63],
-  KHPX:[36.74,-87.28],KHTX:[34.93,-86.08],KICT:[37.65,-97.44],KICX:[37.59,-112.86],
-  KILN:[39.42,-83.82],KILX:[40.15,-89.34],KIND:[39.7,-86.28],KINX:[36.18,-95.56],
-  KIWA:[33.29,-111.67],KIWX:[41.36,-85.7],KJAX:[30.48,-81.7],KJGX:[32.68,-83.35],
-  KJKL:[37.59,-83.31],KLBB:[33.65,-101.81],KLCH:[30.12,-93.22],KLGX:[47.12,-124.11],
-  KLNX:[41.96,-100.58],KLOT:[41.6,-88.08],KLRX:[40.74,-116.8],KLSX:[38.7,-90.68],
-  KLTX:[33.99,-78.43],KLVX:[37.97,-85.94],KLWX:[38.98,-77.48],KLZK:[34.84,-92.26],
-  KMAF:[31.94,-102.19],KMAX:[42.08,-122.72],KMBX:[48.39,-100.86],KMHX:[34.78,-76.88],
-  KMKX:[42.97,-88.55],KMLB:[28.11,-80.65],KMOB:[30.68,-88.24],KMPX:[44.85,-93.56],
-  KMQT:[46.53,-87.55],KMRX:[36.17,-83.4],KMSX:[47.04,-113.99],KMTX:[41.26,-112.45],
-  KMUX:[37.15,-121.9],KMVX:[47.53,-97.33],KMXX:[32.54,-85.79],KNKX:[32.92,-117.04],
-  KNQA:[35.35,-89.87],KOAX:[41.32,-96.37],KOHX:[36.25,-86.56],KOKX:[40.87,-72.86],
-  KOTX:[47.68,-117.63],KPAH:[37.07,-88.77],KPBZ:[40.53,-80.22],KPDT:[45.69,-118.85],
-  KPOE:[31.16,-92.98],KPUX:[38.46,-104.18],KRAX:[35.66,-78.49],KRGX:[39.75,-119.46],
-  KRIW:[43.07,-108.48],KRLX:[38.31,-81.72],KRTX:[45.71,-122.97],KSFX:[43.1,-112.69],
-  KSGF:[37.23,-93.4],KSHV:[32.45,-93.84],KSJT:[31.37,-100.49],KSOX:[33.82,-117.64],
-  KSRX:[35.29,-94.36],KTBW:[27.71,-82.4],KTFX:[47.46,-111.38],KTLX:[35.33,-97.28],
-  KTWX:[38.99,-96.23],KTYX:[43.76,-75.68],KUDX:[44.12,-102.83],KUEX:[40.32,-98.44],
-  KVAX:[30.89,-83.0],KVBX:[34.84,-120.4],KVNX:[36.74,-98.13],KVTX:[34.41,-119.18],
-  KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]
-};
+let map,wmsLayer,currentSite=null,siteMarkers={};
+let frames=[],frameIdx=0,playing=false,playTimer=null,dragging=false;
 
-// ── STATE ─────────────────────────────────────────────────────────────────
-let map, wmsLayer, currentSite = null;
-let siteMarkers = {};
-let frames = [], frameIdx = 0;
-let playing = false, playTimer = null;
-let dragging = false;
-
-// ── MAP INIT ──────────────────────────────────────────────────────────────
-window.onload = () => {
-  map = L.map('map', {center:[38,-96], zoom:5});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    {subdomains:'abcd',maxZoom:19,attribution:'© CartoDB'}).addTo(map);
-
-  for (const [id,[lat,lng]] of Object.entries(STATIONS)) {
-    const icon = L.divIcon({
-      className:'',
-      html:`<div class="site-pill" id="pill-${id}"><div class="site-dot"></div>${id}</div>`,
-      iconAnchor:[0,10]
-    });
-    const m = L.marker([lat,lng],{icon,zIndexOffset:100}).addTo(map);
-    m.on('click', () => selectSite(id));
-    siteMarkers[id] = m;
+window.onload=()=>{
+  map=L.map('map',{center:[38,-96],zoom:5});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'© CartoDB'}).addTo(map);
+  for(const [id,[lat,lng]] of Object.entries(STATIONS)){
+    const icon=L.divIcon({className:'',html:`<div class="site-pill" id="pill-${id}"><div class="site-dot"></div>${id}</div>`,iconAnchor:[0,10]});
+    const m=L.marker([lat,lng],{icon,zIndexOffset:100}).addTo(map);
+    m.on('click',()=>selectSite(id));
+    siteMarkers[id]=m;
   }
-
   initSlider();
 };
 
-// ── STATION SELECT ────────────────────────────────────────────────────────
-function selectSite(id) {
+function selectSite(id){
   stopPlay();
-  currentSite = id;
-  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('selected'));
-  const pill = document.getElementById('pill-'+id);
-  if (pill) pill.classList.add('selected');
-  document.getElementById('stSite').textContent = id;
-  document.getElementById('stSite').style.color = '#fff';
-  const [lat,lng] = STATIONS[id];
-  map.setView([lat,lng], 8);
+  currentSite=id;
+  document.querySelectorAll('.site-pill').forEach(p=>p.classList.remove('selected'));
+  const pill=document.getElementById('pill-'+id);
+  if(pill) pill.classList.add('selected');
+  document.getElementById('stSite').textContent=id;
+  document.getElementById('stSite').style.color='#fff';
+  const [lat,lng]=STATIONS[id];
+  map.setView([lat,lng],8);
   buildFrames();
 }
 
-// ── FRAMES (last 60 min, ~2 min intervals = 30 frames) ───────────────────
-function buildFrames() {
-  const now = new Date();
+function buildFrames(){
+  const now=new Date();
   now.setSeconds(0,0);
   now.setMinutes(Math.floor(now.getMinutes()/2)*2);
-  frames = [];
-  for (let i=29; i>=0; i--) {
-    const t = new Date(now.getTime() - i*2*60000);
-    frames.push({
-      time: t,
-      label: t.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZoneName:'short'})
-    });
+  frames=[];
+  for(let i=29;i>=0;i--){
+    const t=new Date(now.getTime()-i*2*60000);
+    frames.push({time:t,label:t.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZoneName:'short'})});
   }
   buildTicks();
-  setFrame(frames.length-1, true);
+  setFrame(frames.length-1,true);
 }
 
-// ── SLIDER ────────────────────────────────────────────────────────────────
-function initSlider() {
-  const track = document.getElementById('sliderTrack');
-
-  track.addEventListener('mousedown', e => {
-    dragging = true;
-    scrubTo(e);
-  });
-  window.addEventListener('mousemove', e => { if (dragging) scrubTo(e); });
-  window.addEventListener('mouseup', () => { dragging = false; });
-
-  track.addEventListener('touchstart', e => { dragging=true; scrubTo(e.touches[0]); },{passive:true});
-  window.addEventListener('touchmove', e => { if(dragging) scrubTo(e.touches[0]); },{passive:true});
-  window.addEventListener('touchend', () => { dragging=false; });
-
-  document.getElementById('btnPlay').addEventListener('click', togglePlay);
-  document.getElementById('btnFirst').addEventListener('click', () => setFrame(0));
-  document.getElementById('btnLast').addEventListener('click', () => setFrame(frames.length-1));
-  document.getElementById('btnStep0').addEventListener('click', () => setFrame(frameIdx-1));
-  document.getElementById('btnStep1').addEventListener('click', () => setFrame(frameIdx+1));
+function initSlider(){
+  const track=document.getElementById('sliderTrack');
+  track.addEventListener('mousedown',e=>{dragging=true;scrubTo(e);});
+  window.addEventListener('mousemove',e=>{if(dragging)scrubTo(e);});
+  window.addEventListener('mouseup',()=>{dragging=false;});
+  track.addEventListener('touchstart',e=>{dragging=true;scrubTo(e.touches[0]);},{passive:true});
+  window.addEventListener('touchmove',e=>{if(dragging)scrubTo(e.touches[0]);},{passive:true});
+  window.addEventListener('touchend',()=>{dragging=false;});
+  document.getElementById('btnPlay').addEventListener('click',togglePlay);
+  document.getElementById('btnFirst').addEventListener('click',()=>setFrame(0));
+  document.getElementById('btnLast').addEventListener('click',()=>setFrame(frames.length-1));
+  document.getElementById('btnStep0').addEventListener('click',()=>setFrame(frameIdx-1));
+  document.getElementById('btnStep1').addEventListener('click',()=>setFrame(frameIdx+1));
 }
 
-function scrubTo(e) {
-  if (!frames.length) return;
-  const track = document.getElementById('sliderTrack');
-  const rect = track.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  setFrame(Math.round(pct * (frames.length-1)));
+function scrubTo(e){
+  if(!frames.length)return;
+  const rect=document.getElementById('sliderTrack').getBoundingClientRect();
+  const pct=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+  setFrame(Math.round(pct*(frames.length-1)));
 }
 
-function buildTicks() {
-  const row = document.getElementById('ticksRow');
-  row.innerHTML = '';
-  frames.forEach((f,i) => {
-    const pct = i/(frames.length-1)*100;
-    const tick = document.createElement('div');
-    tick.className = 'tick';
-    tick.style.cssText = `left:${pct}%;height:${i%5===0?10:6}px;background:${i===frameIdx?'#2df0ff':'#2a3f55'}`;
-    tick.id = 'tick-'+i;
+function buildTicks(){
+  const row=document.getElementById('ticksRow');
+  row.innerHTML='';
+  frames.forEach((_,i)=>{
+    const pct=i/(frames.length-1)*100;
+    const tick=document.createElement('div');
+    tick.className='tick';
+    tick.style.cssText=`left:${pct}%;height:${i%5===0?10:6}px;background:#2a3f55`;
+    tick.id='tick-'+i;
     row.appendChild(tick);
   });
 }
 
-function updateTicks() {
-  frames.forEach((_,i) => {
-    const t = document.getElementById('tick-'+i);
-    if (t) t.style.background = i===frameIdx ? '#2df0ff' : '#2a3f55';
+function updateTicks(){
+  frames.forEach((_,i)=>{
+    const t=document.getElementById('tick-'+i);
+    if(t)t.style.background=i===frameIdx?'#2df0ff':'#2a3f55';
   });
 }
 
-function setFrame(idx, force) {
-  if (!frames.length) return;
-  idx = Math.max(0, Math.min(frames.length-1, idx));
-  if (idx===frameIdx && !force) return;
-  frameIdx = idx;
-
-  const pct = idx/(frames.length-1)*100;
-  document.getElementById('sliderFill').style.width = pct+'%';
-  document.getElementById('sliderThumb').style.left = pct+'%';
-  document.getElementById('frameTime').textContent = frames[idx].label;
+function setFrame(idx,force){
+  if(!frames.length)return;
+  idx=Math.max(0,Math.min(frames.length-1,idx));
+  if(idx===frameIdx&&!force)return;
+  frameIdx=idx;
+  const pct=idx/(frames.length-1)*100;
+  document.getElementById('sliderFill').style.width=pct+'%';
+  document.getElementById('sliderThumb').style.left=pct+'%';
+  document.getElementById('frameTime').textContent=frames[idx].label;
   updateTicks();
-
-  const isLive = idx===frames.length-1;
-  document.getElementById('liveTag').style.display = isLive ? '' : 'none';
-
+  const isLive=idx===frames.length-1;
+  document.getElementById('liveTag').style.display=isLive?'':'none';
   loadWMS();
 }
 
-// ── WMS ───────────────────────────────────────────────────────────────────
-function loadWMS() {
-  if (!currentSite) return;
-  const site = currentSite.toLowerCase();
-  const product = document.getElementById('product').value;
-  if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer=null; }
-  wmsLayer = L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/wms', {
-    layers: `${site}:${site}_${product}`,
-    format: 'image/png',
-    transparent: true,
-    version: '1.3.0',
-    tileSize: 512,
-    zoomOffset: -1,
-    styles: 'radar_reflectivity',
-    opacity: 0.9,
-    zIndex: 10
+function loadWMS(){
+  if(!currentSite)return;
+  const site=currentSite.toLowerCase();
+  const product=document.getElementById('product').value;
+  if(wmsLayer){map.removeLayer(wmsLayer);wmsLayer=null;}
+  wmsLayer=L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/wms',{
+    layers:`${site}:${site}_${product}`,
+    format:'image/png',
+    transparent:true,
+    version:'1.3.0',
+    tileSize:512,
+    zoomOffset:-1,
+    styles:'radar_reflectivity',
+    opacity:0.9,
+    zIndex:10
   }).addTo(map);
 }
 
-function onProductChange() { if (currentSite) loadWMS(); }
+function onProductChange(){if(currentSite)loadWMS();}
 
-// ── PLAY ──────────────────────────────────────────────────────────────────
-function togglePlay() {
-  playing ? stopPlay() : startPlay();
-}
-function startPlay() {
-  playing = true;
-  document.getElementById('btnPlay').textContent = '⏸';
+function togglePlay(){playing?stopPlay():startPlay();}
+function startPlay(){
+  playing=true;
+  document.getElementById('btnPlay').textContent='⏸';
   document.getElementById('btnPlay').classList.add('active');
-  if (frameIdx >= frames.length-1) setFrame(0, true);
-  playTimer = setInterval(() => {
-    if (frameIdx >= frames.length-1) { stopPlay(); return; }
+  if(frameIdx>=frames.length-1)setFrame(0,true);
+  playTimer=setInterval(()=>{
+    if(frameIdx>=frames.length-1){stopPlay();return;}
     setFrame(frameIdx+1);
-  }, 700);
+  },700);
 }
-function stopPlay() {
-  playing = false;
+function stopPlay(){
+  playing=false;
   clearInterval(playTimer);
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').textContent='▶';
   document.getElementById('btnPlay').classList.remove('active');
 }
 </script>
