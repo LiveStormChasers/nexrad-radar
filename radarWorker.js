@@ -1,5 +1,15 @@
-// radarWorker.js — NEXRAD Level-2 parser for NOMADS .bz2 files
-// NOMADS format: entire file is bzip2 compressed → decompress → 24-byte header + LDM records
+// radarWorker.js — dual-mode NEXRAD renderer
+//
+// Fast path (message.type === 'compact'):
+//   Server preprocessed the Level-2 file → compact binary (already decompressed by fetch).
+//   Format: 24-byte header + azimuth f32[] + u8 gate data (palette index + 1, 0=nodata)
+//   Render time: ~50ms instead of ~8000ms
+//
+// Slow path (message.type === 'level2' or fallback):
+//   Raw .bz2 NEXRAD Level-2 from NOMADS — decompress + parse + render in browser.
+//   Kept for fallback if /radar/process/ is unavailable.
+//
+// In both cases: postMessage({ id, rendered:{ pixels, width, height, maxRangeKm } })
 
 importScripts('bzip2.js');
 
@@ -49,86 +59,123 @@ const PAL_DATA = [
 [150,80,56],[145,70,48],[140,60,40],[135,50,32],[130,40,24],[125,30,16],
 [120,20,8],[115,10,1]
 ];
-// Build flat byte array: index = (dbz+32)*2, value=[r,g,b]
+
+// Pre-build RGBA flat palette (index → 4 bytes including alpha=230)
+// Index 0 = transparent (no data), indices 1..254 → palette entry 0..253
+const RGBA_PAL = new Uint8Array(255 * 4); // slot 0 = no-data (transparent)
+for (let i = 0; i < PAL_DATA.length; i++) {
+  const slot = (i + 1) * 4; // slot 0 unused (no-data), slot 1 = pal[0]
+  RGBA_PAL[slot]   = PAL_DATA[i][0];
+  RGBA_PAL[slot+1] = PAL_DATA[i][1];
+  RGBA_PAL[slot+2] = PAL_DATA[i][2];
+  RGBA_PAL[slot+3] = 230;
+}
+
+// Also keep flat palette for slow-path dBZ → index lookup
 const PALETTE = new Uint8Array(PAL_DATA.length * 3);
 for (let i = 0; i < PAL_DATA.length; i++) {
   PALETTE[i*3]=PAL_DATA[i][0]; PALETTE[i*3+1]=PAL_DATA[i][1]; PALETTE[i*3+2]=PAL_DATA[i][2];
 }
 const PAL_SIZE = PAL_DATA.length;
 
-function dbzColor(dbz, out, off) {
-  let idx = Math.round((dbz + 32) * 2);
-  if (idx < 0) idx = 0;
-  if (idx >= PAL_SIZE) idx = PAL_SIZE - 1;
-  out[off]   = PALETTE[idx*3];
-  out[off+1] = PALETTE[idx*3+1];
-  out[off+2] = PALETTE[idx*3+2];
-}
+// ═══════════════════════════════════════════════════════════════
+// FAST PATH — render compact binary (pre-processed by CF Worker)
+// ═══════════════════════════════════════════════════════════════
 
-// ── Parser ────────────────────────────────────────────────────────────────
-function parseLevel2(raw) {
-  // NOMADS files: entire file is one bzip2 stream
-  // Decompress → standard NEXRAD Level-2 binary
-  let data;
-  try {
-    data = Bzip2.decompress(new Uint8Array(raw));
-  } catch(e) {
-    // Maybe it's not compressed (shouldn't happen with NOMADS)
-    data = new Uint8Array(raw);
+function renderCompact(compactBuf, sz) {
+  const data = new Uint8Array(compactBuf);
+  const dv   = new DataView(compactBuf);
+
+  // Validate magic
+  if (dv.getUint32(0, true) !== 0x52444152) throw new Error('Bad compact magic');
+
+  const numAz      = dv.getUint32(4,  true);
+  const numGates   = dv.getUint32(8,  true);
+  const firstRangeM= dv.getFloat32(12, true);
+  const gateSizeM  = dv.getFloat32(16, true);
+  const maxRangeKm = dv.getFloat32(20, true);
+
+  const azOffset   = 24;
+  const gateOffset = azOffset + numAz * 4;
+
+  // Build az lookup table: azimuth angle (degrees) → az bin index
+  // We use nearest-radial rendering: for each pixel, compute az, find nearest bin
+  const azDeg = new Float32Array(numAz);
+  for (let i = 0; i < numAz; i++)
+    azDeg[i] = dv.getFloat32(azOffset + i*4, true);
+
+  const pixels    = new Uint8ClampedArray(sz * sz * 4);
+  const maxRangeM = maxRangeKm * 1000;
+  const kmPx      = (maxRangeKm * 2) / sz;
+  const cx = sz / 2, cy = sz / 2;
+
+  for (let py = 0; py < sz; py++) {
+    const dy  = -(py - cy) * kmPx;
+    const dy2 = dy * dy;
+    for (let px = 0; px < sz; px++) {
+      const dx = (px - cx) * kmPx;
+      const rM = Math.sqrt(dx*dx + dy2) * 1000;
+      if (rM < firstRangeM || rM > maxRangeM) continue;
+
+      let az = Math.atan2(dx, dy) * 180 / Math.PI;
+      if (az < 0) az += 360;
+      const azBin   = Math.floor(az * 2) % numAz; // 0.5° bins
+      const gateIdx = Math.floor((rM - firstRangeM) / gateSizeM);
+      if (gateIdx >= numGates) continue;
+
+      const val = data[gateOffset + azBin * numGates + gateIdx];
+      if (val === 0) continue; // no data
+
+      const pi = (py * sz + px) * 4;
+      const slot = val * 4; // val is palIdx+1, so slot = (palIdx+1)*4
+      pixels[pi]   = RGBA_PAL[slot];
+      pixels[pi+1] = RGBA_PAL[slot+1];
+      pixels[pi+2] = RGBA_PAL[slot+2];
+      pixels[pi+3] = RGBA_PAL[slot+3];
+    }
   }
 
-  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return { pixels, width: sz, height: sz, maxRangeKm };
+}
 
-  // 24-byte archive-II file header
-  // Bytes 0-3: "AR2V" magic
-  // Bytes 4-8: version
-  // Bytes 8-12: extension number
-  // Bytes 12-16: date (modified Julian)
-  // Bytes 16-20: time (ms since midnight)
-  // Bytes 20-24: ICAO (station ID)
+// ═══════════════════════════════════════════════════════════════
+// SLOW PATH — raw Level-2 parser (kept as fallback)
+// ═══════════════════════════════════════════════════════════════
+
+function parseLevel2(raw) {
+  let data;
+  try { data = Bzip2.decompress(new Uint8Array(raw)); }
+  catch(e) { data = new Uint8Array(raw); }
+
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24;
 
-  const NUM_AZ = 720; // 0.5° bins
+  const NUM_AZ = 720;
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
 
-  // Loop through LDM compressed records
   while (pos + 4 <= data.length) {
-    // Each record: 4-byte size (big-endian signed), then data
-    // Negative size = uncompressed, positive = bzip2 compressed record
     const recSizeRaw = dv.getInt32(pos, false);
     pos += 4;
     if (recSizeRaw === 0) break;
-
-    let chunk;
     const recSize = Math.abs(recSizeRaw);
     if (pos + recSize > data.length) break;
 
+    let chunk;
     if (recSizeRaw < 0) {
-      // Uncompressed record
       chunk = data.slice(pos, pos + recSize);
     } else {
-      // bzip2-compressed record
-      try {
-        chunk = Bzip2.decompress(data.slice(pos, pos + recSize));
-      } catch(e) {
-        pos += recSize;
-        continue;
-      }
+      try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); }
+      catch(e) { pos += recSize; continue; }
     }
     pos += recSize;
 
-    // Walk messages in this chunk (each message has 12-byte CTM + 16-byte header)
     let mpos = 0;
     while (mpos + 28 <= chunk.length) {
-      const msgType    = chunk[mpos + 15];
-      const segsHW     = (chunk[mpos+12] << 8) | chunk[mpos+13];
-      const msgBytes   = 12 + segsHW * 2;
-
-      if (msgType === 31) {
-        parseMsg31(chunk, mpos + 28, mpos + Math.max(msgBytes, 28));
-      }
-
+      const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
+      const msgType = chunk[mpos+15];
+      const msgBytes = 12 + segsHW * 2;
+      if (msgType === 31) parseMsg31(chunk, mpos + 28);
       mpos += Math.max(msgBytes, 28);
     }
   }
@@ -136,50 +183,30 @@ function parseLevel2(raw) {
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
-
-    // Elevation number at offset 22 (1-based) — only want elevation 1 (0.5°)
-    const elevNum = dv2.getUint8(22);
-    if (elevNum !== 1) return;
-
-    // Azimuth at offset 12 (float32 big-endian)
+    if (dv2.getUint8(22) !== 1) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
-
-    // Number of data blocks at offset 30 (uint16)
     const nBlocks = dv2.getUint16(30, false);
     if (nBlocks < 1) return;
-
-    // Block pointers start at offset 32 (uint32 each)
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr  = dv2.getUint32(32 + b*4, false);
-      const boff = ptr; // offset from start of msg31 data block
-
-      if (base + boff + 28 > chunk.length) continue;
-
-      // Check block type 'D' (68) and name 'REF'
-      if (chunk[chunk.byteOffset + base + boff] !== 68) continue;
-      if (chunk[chunk.byteOffset + base + boff+1] !== 82 ||
-          chunk[chunk.byteOffset + base + boff+2] !== 69 ||
-          chunk[chunk.byteOffset + base + boff+3] !== 70) continue;
-
-      const bdv = new DataView(chunk.buffer, chunk.byteOffset + base + boff);
-      const ng  = bdv.getUint16(8, false);   // number of gates
-      const fg  = bdv.getUint16(10, false);  // first gate range (m)
-      const gs  = bdv.getUint16(12, false);  // gate size (m)
-      const scl = bdv.getFloat32(20, false); // scale
-      const ofs = bdv.getFloat32(24, false); // offset
-
-      if (!radialData) {
-        numGates = ng; firstGateM = fg; gateSizeM = gs;
-        radialData = new Float32Array(NUM_AZ * ng).fill(-999);
-      }
-
-      const dataOff = base + boff + 28;
+      const bbase = chunk.byteOffset + base + ptr;
+      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
+      if (chunk[bbase] !== 68) continue;
+      if (chunk[bbase+1]!==82||chunk[bbase+2]!==69||chunk[bbase+3]!==70) continue;
+      const bdv = new DataView(chunk.buffer, bbase);
+      const ng  = bdv.getUint16(8,  false);
+      const fg  = bdv.getUint16(10, false);
+      const gs  = bdv.getUint16(12, false);
+      const scl = bdv.getFloat32(20, false);
+      const ofs = bdv.getFloat32(24, false);
+      if (!radialData) { numGates=ng; firstGateM=fg; gateSizeM=gs; radialData=new Float32Array(NUM_AZ*ng).fill(-999); }
+      const dataOff = base + ptr + 28;
       for (let g = 0; g < ng; g++) {
         if (dataOff + g >= chunk.length) break;
         const raw = chunk[chunk.byteOffset + dataOff + g];
-        radialData[azBin * numGates + g] = raw <= 1 ? -999 : (raw - ofs) / scl;
+        radialData[azBin*numGates+g] = raw<=1 ? -999 : (raw-ofs)/scl;
       }
       break;
     }
@@ -188,52 +215,61 @@ function parseLevel2(raw) {
   return { radialData, numGates, firstGateM, gateSizeM, NUM_AZ };
 }
 
-// ── Renderer ───────────────────────────────────────────────────────────────
-function render(parsed, sz) {
+function renderLevel2(parsed, sz) {
   const { radialData, numGates, firstGateM, gateSizeM, NUM_AZ } = parsed;
   if (!radialData) return null;
-
   const pixels = new Uint8ClampedArray(sz * sz * 4);
   const maxRangeM  = firstGateM + numGates * gateSizeM;
   const maxRangeKm = maxRangeM / 1000;
   const kmPx = (maxRangeKm * 2) / sz;
-  const cx = sz / 2, cy = sz / 2;
+  const cx = sz/2, cy = sz/2;
 
   for (let py = 0; py < sz; py++) {
-    const dy = -(py - cy) * kmPx;
-    const dy2 = dy * dy;
+    const dy = -(py-cy)*kmPx, dy2=dy*dy;
     for (let px = 0; px < sz; px++) {
-      const dx = (px - cx) * kmPx;
-      const rM = Math.sqrt(dx*dx + dy2) * 1000;
+      const dx = (px-cx)*kmPx;
+      const rM = Math.sqrt(dx*dx+dy2)*1000;
       if (rM < firstGateM || rM > maxRangeM) continue;
-
-      let az = Math.atan2(dx, dy) * 180 / Math.PI;
-      if (az < 0) az += 360;
-      const azBin   = Math.floor(az * 2) % NUM_AZ;
-      const gateIdx = Math.floor((rM - firstGateM) / gateSizeM);
-      if (gateIdx >= numGates) continue;
-
-      const dbz = radialData[azBin * numGates + gateIdx];
-      if (dbz < -32) continue;
-
-      const pi = (py * sz + px) * 4;
-      dbzColor(dbz, pixels, pi);
-      pixels[pi+3] = 230;
+      let az = Math.atan2(dx,dy)*180/Math.PI;
+      if (az<0) az+=360;
+      const azBin   = Math.floor(az*2)%NUM_AZ;
+      const gateIdx = Math.floor((rM-firstGateM)/gateSizeM);
+      if (gateIdx>=numGates) continue;
+      const dbz = radialData[azBin*numGates+gateIdx];
+      if (dbz<-32) continue;
+      let idx = Math.round((dbz+32)*2);
+      if (idx<0) idx=0; if(idx>=PAL_SIZE) idx=PAL_SIZE-1;
+      const pi = (py*sz+px)*4;
+      pixels[pi]=PALETTE[idx*3]; pixels[pi+1]=PALETTE[idx*3+1]; pixels[pi+2]=PALETTE[idx*3+2]; pixels[pi+3]=230;
     }
   }
-  return { pixels, width: sz, height: sz, maxRangeKm };
+  return { pixels, width:sz, height:sz, maxRangeKm };
 }
 
-// ── Message handler ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// Message handler
+// ═══════════════════════════════════════════════════════════════
+
 self.onmessage = function(e) {
-  const { id, buffer, canvasSize } = e.data;
+  const { id, buffer, type, canvasSize } = e.data;
+  const sz = canvasSize || 2048;
+
   try {
-    const parsed = parseLevel2(buffer);
-    if (!parsed || !parsed.radialData) {
-      self.postMessage({ id, error: 'No REF data found in this file' });
-      return;
+    let result;
+
+    if (type === 'compact') {
+      // Fast path: compact binary from /radar/process/
+      result = renderCompact(buffer, sz);
+    } else {
+      // Slow path: raw Level-2 from /radar/file/
+      const parsed = parseLevel2(buffer);
+      if (!parsed || !parsed.radialData) {
+        self.postMessage({ id, error: 'No REF data found' });
+        return;
+      }
+      result = renderLevel2(parsed, sz);
     }
-    const result = render(parsed, canvasSize || 900);
+
     if (!result) { self.postMessage({ id, error: 'Render failed' }); return; }
     self.postMessage({ id, rendered: result }, [result.pixels.buffer]);
   } catch(err) {

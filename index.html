@@ -132,11 +132,11 @@ function spawnWorker() {
 }
 
 let workerIdCounter = 0;
-function runWorker(buffer, canvasSize) {
+function runWorker(buffer, canvasSize, type) {
   return new Promise((resolve, reject) => {
     const id = ++workerIdCounter;
     workerQ.push({id, resolve, reject});
-    worker.postMessage({id, buffer, canvasSize}, [buffer]);
+    worker.postMessage({id, buffer, canvasSize, type: type || 'level2'}, [buffer]);
   });
 }
 
@@ -208,13 +208,31 @@ async function selectSite(id) {
 }
 
 async function fetchAndRender(fi) {
-  const f   = frames[fi];
-  const url = `/radar/file/${curSite}/${f.key}`;
-  const r   = await fetch(url);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const buf      = await r.arrayBuffer();
-  // Render at 2048px — enough resolution for any zoom without upscaling
-  const rendered = await runWorker(buf, 2048);
+  const f = frames[fi];
+
+  // Try fast path: /radar/process/ returns compact binary (server-preprocessed)
+  // Falls back to /radar/file/ (raw Level-2) if process endpoint fails
+  let buf, msgType;
+  const processUrl = `/radar/process/${curSite}/${f.key}`;
+  const fileUrl    = `/radar/file/${curSite}/${f.key}`;
+
+  try {
+    const r = await fetch(processUrl);
+    if (r.ok) {
+      buf     = await r.arrayBuffer();
+      msgType = 'compact';
+    } else {
+      throw new Error('process returned ' + r.status);
+    }
+  } catch(e) {
+    // Fallback to raw Level-2 (slow — requires browser bzip2 + NEXRAD parse)
+    const r2 = await fetch(fileUrl);
+    if (!r2.ok) throw new Error('HTTP ' + r2.status);
+    buf     = await r2.arrayBuffer();
+    msgType = 'level2';
+  }
+
+  const rendered = await runWorker(buf, 2048, msgType);
   f.imgData    = rendered.pixels;
   f.maxRangeKm = rendered.maxRangeKm;
   f.width      = rendered.width;
