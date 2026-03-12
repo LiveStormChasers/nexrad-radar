@@ -188,19 +188,35 @@ async function selectSite(id) {
     }));
     buildTicks(frames.length);
     setFrame(frames.length - 1, true);
-    setStatus(`Loading 0/${frames.length}...`);
+    setStatus('Loading latest...');
 
-    // Preload all frames in background, newest first
-    const order = [...frames.map((_,i)=>i)].reverse();
-    let done = 0;
-    for (const fi of order) {
-      fetchAndRender(fi).then(() => {
-        done++;
-        setStatus(done === frames.length ? '' : `Loading ${done}/${frames.length}...`);
-        updateTickLoaded(fi);
-        if (fi === frameIdx) redrawCurrentFrame();
-      }).catch(()=>{});
+    // Load latest frame FIRST — show radar immediately
+    const latestIdx = frames.length - 1;
+    try {
+      await fetchAndRender(latestIdx);
+      updateTickLoaded(latestIdx);
+      redrawCurrentFrame();
+      setStatus('');
+    } catch(e) {
+      setStatus('Error loading latest frame');
     }
+
+    // Then load the rest newest→oldest, 3 at a time
+    const remaining = [];
+    for (let i = frames.length - 2; i >= 0; i--) remaining.push(i);
+
+    async function loadBatch(indices) {
+      for (let i = 0; i < indices.length; i += 3) {
+        const batch = indices.slice(i, i + 3);
+        await Promise.allSettled(batch.map(fi =>
+          fetchAndRender(fi).then(() => {
+            updateTickLoaded(fi);
+            if (fi === frameIdx) redrawCurrentFrame();
+          }).catch(()=>{})
+        ));
+      }
+    }
+    loadBatch(remaining);
   } catch(e) {
     setStatus('Error: ' + e.message);
   }
@@ -334,7 +350,15 @@ function setFrame(idx, force) {
   document.getElementById('liveTag').style.display = isLive ? '' : 'none';
 
   redrawCurrentFrame();
-}
+
+  // On-demand fetch if frame not loaded yet
+  if (!frames[idx]?.imgData) {
+    setStatus('Loading...');
+    fetchAndRender(idx).then(() => {
+      updateTickLoaded(idx);
+      if (idx === frameIdx) { redrawCurrentFrame(); setStatus(''); }
+    }).catch(()=>setStatus(''));
+  }
 
 function togglePlay() {
   playing ? stopPlay() : startPlay();
