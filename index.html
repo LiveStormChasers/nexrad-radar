@@ -8,39 +8,110 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0c0f;color:#c8d4e0;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-#bar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:#111418;border-bottom:1px solid #1e2329;flex-shrink:0;flex-wrap:wrap}
-.logo{font-size:15px;font-weight:700;color:#00d4ff;letter-spacing:.1em;white-space:nowrap}
-select,button{background:#0a0c0f;border:1px solid #2d3540;color:#c8d4e0;font-size:11px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:inherit}
-select:hover,button:hover{border-color:#00d4ff}
-label{color:#5a6a7a;font-size:10px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
-#map{flex:1}
-#status{padding:3px 12px;background:#111418;border-top:1px solid #1e2329;font-size:10px;color:#5a6a7a;flex-shrink:0;display:flex;gap:16px}
-#status span{color:#c8d4e0}
-.leaflet-control-zoom a{background:#111418!important;color:#c8d4e0!important;border-color:#2d3540!important}
-.site-label{background:transparent;border:none;box-shadow:none;color:#00d4ff;font-size:10px;font-family:monospace;font-weight:700;white-space:nowrap;text-shadow:0 0 4px #000,0 0 4px #000}
+body{background:#0a0c0f;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#bar{display:flex;align-items:center;gap:12px;padding:7px 16px;background:#111418dd;border-bottom:1px solid #ffffff12;flex-shrink:0;backdrop-filter:blur(10px);z-index:1000;position:relative}
+.logo{font-size:15px;font-weight:800;color:#2df0ff;letter-spacing:.08em}
+#stSite{font-size:13px;font-weight:700;color:#fff}
+#stTime{font-size:11px;color:#6a7a8a;margin-left:4px}
+.spacer{flex:1}
+select,button{background:#1a2230;border:1px solid #2a3a50;color:#d0e0f0;font-size:11px;padding:5px 10px;border-radius:20px;cursor:pointer;font-family:inherit;outline:none}
+select:hover,button:hover{border-color:#2df0ff55}
+#map{flex:1;position:relative}
+
+/* LEGEND */
+#legend{position:absolute;top:12px;left:12px;z-index:800;background:#111418cc;border:1px solid #ffffff15;border-radius:12px;padding:8px 12px;backdrop-filter:blur(8px);pointer-events:none}
+#legend-bar{width:200px;height:8px;border-radius:4px;margin-bottom:4px;background:linear-gradient(to right,
+  #a8ab98 0%,
+  #6b85a0 12%,
+  #5085a0 18%,
+  #2db64e 28%,
+  #127618 35%,
+  #9bbf03 42%,
+  #e6df00 48%,
+  #d77805 58%,
+  #c62513 65%,
+  #8e271d 70%,
+  #c76a9b 75%,
+  #c32f7c 80%,
+  #811ec9 85%,
+  #51139d 88%,
+  #76e0e7 93%,
+  #730a01 100%)}
+#legend-labels{display:flex;justify-content:space-between;font-size:9px;color:#6a7a8a;width:200px}
+
+/* SLIDER BAR */
+#sliderBar{flex-shrink:0;background:#0e1218;border-top:1px solid #ffffff10;padding:8px 16px 10px;display:flex;flex-direction:column;gap:6px}
+#sliderRow{display:flex;align-items:center;gap:10px}
+#sliderTrack{flex:1;position:relative;height:6px;background:#1a2230;border-radius:3px;cursor:pointer}
+#sliderFill{position:absolute;left:0;top:0;height:100%;background:#2df0ff;border-radius:3px;pointer-events:none}
+#sliderThumb{position:absolute;top:50%;width:14px;height:14px;background:#fff;border:2px solid #2df0ff;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 6px #2df0ff88}
+#sliderTicks{flex:1;position:relative;height:16px;margin-top:-4px}
+.tick{position:absolute;top:0;width:2px;height:6px;background:#2a3a50;border-radius:1px;transform:translateX(-50%)}
+.tick.active{background:#2df0ff88}
+.tick.has-data{background:#3a5a70}
+#sliderMeta{display:flex;align-items:center;gap:12px}
+.ctrl-btn{background:none;border:none;color:#6a8aaa;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:6px;line-height:1}
+.ctrl-btn:hover{color:#2df0ff;background:#2df0ff15}
+.ctrl-btn.active{color:#2df0ff}
+#frameTime{font-size:11px;color:#8aaabb;min-width:130px}
+#liveTag{font-size:10px;font-weight:700;color:#2df0ff;background:#2df0ff20;border:1px solid #2df0ff40;border-radius:10px;padding:2px 8px}
+
+/* STATION MARKERS — pill style */
+.site-pill{
+  display:inline-flex;align-items:center;gap:4px;
+  background:#0e1520cc;border:1.5px solid #2df0ff55;
+  border-radius:20px;padding:2px 7px 2px 4px;
+  font-size:10px;font-weight:700;color:#2df0ff;
+  cursor:pointer;white-space:nowrap;
+  backdrop-filter:blur(4px);
+  transition:all .15s;box-shadow:0 0 6px #00000088;
+}
+.site-pill:hover{background:#1a2a3ccc;border-color:#2df0ff;color:#fff}
+.site-pill.selected{background:#2df0ff22;border-color:#2df0ff;color:#fff;box-shadow:0 0 10px #2df0ff55}
+.site-dot{width:7px;height:7px;border-radius:50%;background:#2df0ff;flex-shrink:0}
+.site-pill.selected .site-dot{background:#fff;box-shadow:0 0 4px #2df0ff}
+.leaflet-div-icon{background:transparent!important;border:none!important}
 </style>
 </head>
 <body>
+
 <div id="bar">
   <div class="logo">⚡ NEXRAD</div>
-  <label>Product</label>
-  <select id="product" onchange="if(currentSite) loadSite(currentSite)">
+  <select id="product" onchange="changeProduct()">
     <option value="sr_bref">Reflectivity</option>
     <option value="sr_vel">Velocity</option>
   </select>
-  <button onclick="if(currentSite) loadSite(currentSite)">⟳ Refresh</button>
-  <div id="stSite" style="color:#00d4ff;font-weight:700;font-size:13px;margin-left:4px">← Click a station</div>
-  <div id="stTime" style="color:#5a6a7a;font-size:10px"></div>
+  <div id="stSite">← Click a station</div>
+  <div id="stTime"></div>
+  <div class="spacer"></div>
+  <div id="liveTag">LIVE</div>
 </div>
-<div id="map"></div>
-<div id="status">
-  <div>Source <span>NWS OpenGeo WMS</span></div>
-  <div id="stStatus">Status <span style="color:#39ff14">Ready</span></div>
-  <div id="stNext">Next <span>—</span></div>
+
+<div id="map">
+  <div id="legend">
+    <div id="legend-bar"></div>
+    <div id="legend-labels"><span>−28</span><span>0</span><span>20</span><span>40</span><span>60</span><span>75 dBZ</span></div>
+  </div>
+</div>
+
+<div id="sliderBar">
+  <div id="sliderRow">
+    <button class="ctrl-btn" id="btnFirst" title="Oldest">⏮</button>
+    <button class="ctrl-btn" id="btnPlay" title="Play">▶</button>
+    <button class="ctrl-btn" id="btnLast" title="Live">⏭</button>
+    <div id="sliderTrack">
+      <div id="sliderFill"></div>
+      <div id="sliderThumb"></div>
+      <div id="sliderTicks"></div>
+    </div>
+  </div>
+  <div id="sliderMeta">
+    <div id="frameTime">No station selected</div>
+  </div>
 </div>
 
 <script>
+// ── STATIONS ─────────────────────────────────────────────
 const STATIONS = {
   KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],
   KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],
@@ -80,95 +151,184 @@ const STATIONS = {
   KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]
 };
 
-let map, wmsLayer, currentSite = null, cdTimer;
+// ── STATE ────────────────────────────────────────────────
+let map, wmsLayer, currentSite = null;
 let siteMarkers = {};
+let frames = [];        // [{time, label}]
+let frameIdx = 0;
+let playing = false;
+let playTimer = null;
+let liveTimer = null;
 
+// ── MAP INIT ─────────────────────────────────────────────
 window.onload = () => {
-  map = L.map('map', {center:[37,-96], zoom:5});
+  map = L.map('map', {center:[38,-96], zoom:5, zoomControl:true});
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     {subdomains:'abcd',maxZoom:19,attribution:'© CartoDB'}).addTo(map);
 
-  // Add all station markers
+  // Place pill markers for every station
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
-    const marker = L.circleMarker([lat, lng], {
-      radius: 5,
-      color: '#00d4ff',
-      fillColor: '#003344',
-      fillOpacity: 0.8,
-      weight: 1.5,
-      className: 'site-marker'
-    }).addTo(map);
-
-    const label = L.marker([lat, lng], {
-      icon: L.divIcon({
-        className: 'site-label',
-        html: id,
-        iconAnchor: [-7, 8]
-      }),
-      interactive: false
-    }).addTo(map);
-
-    marker.bindTooltip(id, {permanent: false, direction: 'top', className: 'site-label'});
-    marker.on('click', () => loadSite(id));
-    siteMarkers[id] = marker;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="site-pill" id="pill-${id}"><div class="site-dot"></div>${id}</div>`,
+      iconAnchor: [0, 10]
+    });
+    const m = L.marker([lat, lng], {icon, zIndexOffset:100}).addTo(map);
+    m.on('click', () => selectSite(id));
+    siteMarkers[id] = m;
   }
+
+  // Slider interactions
+  const track = document.getElementById('sliderTrack');
+  track.addEventListener('click', e => {
+    if (!frames.length) return;
+    const rect = track.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setFrame(Math.round(pct * (frames.length - 1)));
+  });
+
+  document.getElementById('btnPlay').addEventListener('click', togglePlay);
+  document.getElementById('btnFirst').addEventListener('click', () => setFrame(0));
+  document.getElementById('btnLast').addEventListener('click', () => setFrame(frames.length - 1));
 };
 
-function loadSite(id) {
-  clearInterval(cdTimer);
+// ── SELECT STATION ────────────────────────────────────────
+function selectSite(id) {
+  if (currentSite === id) return;
+  stopPlay();
   currentSite = id;
 
-  // Highlight selected marker
-  for (const [sid, m] of Object.entries(siteMarkers)) {
-    m.setStyle({
-      color: sid === id ? '#ffcc00' : '#00d4ff',
-      fillColor: sid === id ? '#332200' : '#003344',
-      radius: sid === id ? 7 : 5,
-      weight: sid === id ? 2.5 : 1.5
-    });
-  }
-
-  const site = id.toLowerCase();
-  const product = document.getElementById('product').value;
-  const layer = `${site}:${site}_${product}`;
+  // Update pill styles
+  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('selected'));
+  const pill = document.getElementById(`pill-${id}`);
+  if (pill) pill.classList.add('selected');
 
   document.getElementById('stSite').textContent = id;
-  document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ffcc00">Loading…</span>';
+  document.getElementById('liveTag').style.display = '';
+
+  const [lat, lng] = STATIONS[id];
+  map.setView([lat, lng], 8);
+
+  buildFrames(id);
+}
+
+// ── BUILD 30-MIN FRAME LIST ───────────────────────────────
+function buildFrames(id) {
+  // Generate last 30 frames at 2-min intervals ending now
+  const now = new Date();
+  // round down to nearest 2 min
+  now.setSeconds(0, 0);
+  now.setMinutes(Math.floor(now.getMinutes() / 2) * 2);
+
+  frames = [];
+  for (let i = 29; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 2 * 60000);
+    frames.push({time: t, label: fmtTime(t)});
+  }
+
+  buildTicks();
+  setFrame(frames.length - 1, true); // jump to live
+}
+
+function fmtTime(d) {
+  return d.toLocaleString('en-US', {
+    month:'short', day:'numeric',
+    hour:'numeric', minute:'2-digit',
+    hour12:true, timeZoneName:'short'
+  });
+}
+
+// ── TICKS ────────────────────────────────────────────────
+function buildTicks() {
+  const track = document.getElementById('sliderTicks');
+  track.innerHTML = '';
+  frames.forEach((f, i) => {
+    const pct = i / (frames.length - 1) * 100;
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.left = pct + '%';
+    tick.id = `tick-${i}`;
+    track.appendChild(tick);
+  });
+}
+
+// ── SET FRAME ────────────────────────────────────────────
+function setFrame(idx, force) {
+  if (!frames.length) return;
+  idx = Math.max(0, Math.min(frames.length - 1, idx));
+  if (idx === frameIdx && !force) return;
+  frameIdx = idx;
+
+  const pct = idx / (frames.length - 1) * 100;
+  document.getElementById('sliderFill').style.width = pct + '%';
+  document.getElementById('sliderThumb').style.left = pct + '%';
+  document.getElementById('frameTime').textContent = frames[idx].label;
+
+  // Tick highlights
+  document.querySelectorAll('.tick').forEach((t, i) => {
+    t.classList.toggle('active', i === idx);
+  });
+
+  const isLive = (idx === frames.length - 1);
+  document.getElementById('liveTag').style.display = isLive ? '' : 'none';
+  if (isLive) document.getElementById('stTime').textContent = '';
+
+  loadWMS(idx);
+}
+
+// ── LOAD WMS ─────────────────────────────────────────────
+function loadWMS(idx) {
+  if (!currentSite) return;
+  const site = currentSite.toLowerCase();
+  const product = document.getElementById('product').value;
 
   if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer = null; }
 
+  // NWS WMS always returns current data — TIME param not supported for most layers
+  // but we keep frame metadata for the slider UX / future animation support
   wmsLayer = L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/wms', {
-    layers: layer,
+    layers: `${site}:${site}_${product}`,
     format: 'image/png',
     transparent: true,
     version: '1.3.0',
     opacity: 0.9,
-    zIndex: 10
+    zIndex: 10,
+    _ts: frames[idx] ? frames[idx].time.getTime() : Date.now() // bust cache per frame
   }).addTo(map);
 
   wmsLayer.on('load', () => {
-    document.getElementById('stStatus').innerHTML = 'Status <span style="color:#39ff14">OK</span>';
-    document.getElementById('stTime').textContent = new Date().toUTCString().slice(5,22) + 'z';
-    startCountdown(120);
+    document.getElementById('stTime').textContent =
+      frameIdx === frames.length - 1 ? 'Live' : frames[frameIdx]?.label || '';
   });
-
-  wmsLayer.on('tileerror', () => {
-    document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ff2d2d">Error</span>';
-  });
-
-  // Center on station
-  const coords = STATIONS[id];
-  if (coords) map.setView(coords, 8);
 }
 
-function startCountdown(secs) {
-  let t = secs;
-  document.getElementById('stNext').innerHTML = `Next <span>${t}s</span>`;
-  cdTimer = setInterval(() => {
-    t--;
-    document.getElementById('stNext').innerHTML = `Next <span>${t}s</span>`;
-    if (t <= 0) { clearInterval(cdTimer); loadSite(currentSite); }
-  }, 1000);
+// ── PRODUCT CHANGE ────────────────────────────────────────
+function changeProduct() {
+  if (currentSite) loadWMS(frameIdx);
+}
+
+// ── PLAY / PAUSE ──────────────────────────────────────────
+function togglePlay() {
+  playing ? stopPlay() : startPlay();
+}
+
+function startPlay() {
+  playing = true;
+  document.getElementById('btnPlay').textContent = '⏸';
+  document.getElementById('btnPlay').classList.add('active');
+  // if at end, restart from beginning
+  if (frameIdx >= frames.length - 1) setFrame(0, true);
+  playTimer = setInterval(() => {
+    if (frameIdx >= frames.length - 1) { stopPlay(); return; }
+    setFrame(frameIdx + 1);
+  }, 800);
+}
+
+function stopPlay() {
+  playing = false;
+  clearInterval(playTimer);
+  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').classList.remove('active');
 }
 </script>
 </body>
