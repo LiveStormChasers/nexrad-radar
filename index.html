@@ -64,11 +64,16 @@ input[type=range]{width:80px;accent-color:var(--accent)}
 
   <!-- Composite product -->
   <div class="cg" id="comp-controls">
-    <span class="cl">Source</span>
+    <span class="cl">Product</span>
     <select id="comp-prd">
-      <option value="rainviewer">RainViewer (animated)</option>
-      <option value="nexrad-n0q-900913">Iowa State NEXRAD N0Q</option>
-      <option value="ridge::USCOMP-N0Q-0">Iowa State RIDGE Composite</option>
+      <optgroup label="── NEXRAD N0Q ──">
+        <option value="nexrad-n0q">N0Q Composite</option>
+        <option value="nexrad-n0q-900913">N0Q Composite (smooth)</option>
+      </optgroup>
+      <optgroup label="── MRMS SeamlessHSR ──">
+        <option value="q2-hsr">MRMS SeamlessHSR</option>
+        <option value="q2-hsr-900913">MRMS SeamlessHSR (smooth)</option>
+      </optgroup>
     </select>
   </div>
 
@@ -205,48 +210,38 @@ function startCd(secs) {
 
 $('br').addEventListener('click', ()=>{ clearInterval(cdTimer); load(); });
 
-// ── COMPOSITE MODE ────────────────────────────────────────────────────
+// ── COMPOSITE MODE — Iowa State MESONET (same MRMS source as WeatherWise) ─
 async function loadComposite() {
   const product = $('comp-prd').value;
-  showLoad('Loading composite…', product);
+  const labels = {
+    'nexrad-n0q':        'NEXRAD N0Q Composite',
+    'nexrad-n0q-900913': 'NEXRAD N0Q Composite (smooth)',
+    'q2-hsr':            'MRMS SeamlessHSR',
+    'q2-hsr-900913':     'MRMS SeamlessHSR (smooth)',
+  };
+  showLoad('Loading ' + (labels[product]||product) + '…', 'Iowa State MESONET');
   setStatus('Fetching…','warn');
   clearOverlays();
 
-  if (product === 'rainviewer') {
-    // RainViewer: fetch latest frame from their API
-    const rv = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
-    const latest = rv.radar.past[rv.radar.past.length - 1];
-    const host = rv.host;
-    const tileUrl = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
-    const time = new Date(latest.time * 1000);
-    const pad = n => String(n).padStart(2,'0');
-    iTim.textContent = `${time.getUTCFullYear()}-${pad(time.getUTCMonth()+1)}-${pad(time.getUTCDate())} ${pad(time.getUTCHours())}:${pad(time.getUTCMinutes())}Z`;
-    iSrc.textContent = 'RainViewer Composite';
-    $('source-badge').textContent = 'RainViewer';
-    radarLayer = L.tileLayer(tileUrl, {
-      opacity: curOp/100,
-      attribution: '<a href="https://rainviewer.com">RainViewer</a>',
-      maxZoom: 12, tileSize: 256, zIndex: 200,
-    }).addTo(map);
-  } else {
-    // Iowa State pre-rendered NEXRAD composite tiles
-    const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`;
-    const now = new Date();
-    const pad = n => String(n).padStart(2,'0');
-    iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
-    iSrc.textContent = 'Iowa State / '+product;
-    $('source-badge').textContent = 'Iowa State MESONET';
-    radarLayer = L.tileLayer(tileUrl, {
-      opacity: curOp/100,
-      attribution: 'NEXRAD via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
-      maxZoom: 10, tileSize: 256, zIndex: 200,
-    }).addTo(map);
-  }
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
+  iSrc.textContent = labels[product] || product;
+  $('source-badge').textContent = 'Iowa State MESONET / MRMS';
+
+  // bust cache so we always get the latest frame
+  const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png?ts=${Math.floor(Date.now()/60000)}`;
+
+  radarLayer = L.tileLayer(tileUrl, {
+    opacity: curOp/100,
+    attribution: 'MRMS via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
+    maxZoom: 10, tileSize: 256, zIndex: 200,
+  }).addTo(map);
 
   hideLoad();
-  setStatus('Composite Live','ok');
+  setStatus('MRMS Live','ok');
   updateLegend('REF');
-  startCd(120);
+  startCd(300); // MRMS updates every 2-5 min
 }
 
 // ── SINGLE SITE MODE — NEXRAD L2 binary parser ────────────────────────
