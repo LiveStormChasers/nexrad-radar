@@ -208,7 +208,7 @@ async function selectSite(id) {
 
 async function fetchAndRender(fi) {
   const f   = frames[fi];
-  const url = `/radar/file/${f.key}`;
+  const url = `/radar/file/${curSite}/${f.key}`;
   const r   = await fetch(url);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const buf      = await r.arrayBuffer();
@@ -220,7 +220,7 @@ async function fetchAndRender(fi) {
 }
 
 function keyToLabel(key) {
-  // Key format: YYYY/MM/DD/KXXX/KXXXYYYYMMDD_HHMMSS_V06
+  // NOMADS format: KXXX_YYYYMMDD_HHMMSS.bz2
   const m = key.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
   if (!m) return key;
   const [,yr,mo,dy,hh,mm] = m;
