@@ -359,6 +359,7 @@ function setFrame(idx, force) {
       if (idx === frameIdx) { redrawCurrentFrame(); setStatus(''); }
     }).catch(()=>setStatus(''));
   }
+}
 
 function togglePlay() {
   playing ? stopPlay() : startPlay();
