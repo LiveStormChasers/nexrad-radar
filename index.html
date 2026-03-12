@@ -9,7 +9,7 @@
 <script src="bzip2.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Barlow+Condensed:wght@400;600;700&display=swap');
-:root{--bg:#0a0c0f;--panel:#111418;--border:#1e2329;--bb:#2d3540;--text:#c8d4e0;--dim:#5a6a7a;--accent:#00d4ff;--green:#39ff14;--warn:#ffcc00;--danger:#ff2d2d;--mono:'JetBrains Mono',monospace;--sans:'Barlow Condensed',sans-serif}
+:root{--bg:#0a0c0f;--panel:#111418;--panel2:#161b22;--border:#1e2329;--bb:#2d3540;--text:#c8d4e0;--dim:#5a6a7a;--accent:#00d4ff;--green:#39ff14;--warn:#ffcc00;--danger:#ff2d2d;--mono:'JetBrains Mono',monospace;--sans:'Barlow Condensed',sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 #topbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
@@ -18,556 +18,551 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12
 .cl{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
 select{background:var(--bg);border:1px solid var(--bb);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:3px;cursor:pointer;outline:none;appearance:none}
 select:hover{border-color:var(--accent)}
-input[type=range]{width:80px;accent-color:var(--accent)}
-.btn{background:var(--bb);border:1px solid var(--bb);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:3px;cursor:pointer}
-.btn:hover{background:var(--accent);color:#000}
-.mode-btn{padding:4px 12px;font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-.mode-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
-#sb{display:flex;align-items:center;gap:16px;padding:4px 14px;background:#0d1015;border-bottom:1px solid var(--border);flex-shrink:0;font-size:11px;flex-wrap:wrap}
-.si{display:flex;align-items:center;gap:5px;white-space:nowrap}
-.sl{color:var(--dim);text-transform:uppercase;font-size:10px;letter-spacing:.06em}
-.sv{color:var(--accent);font-weight:500}.sv.ok{color:var(--green)}.sv.warn{color:var(--warn)}.sv.err{color:var(--danger)}
-#cdb{margin-left:auto;display:flex;align-items:center;gap:6px}
-#cdt{width:80px;height:3px;background:var(--bb);border-radius:2px;overflow:hidden}
-#cdf{height:100%;background:var(--accent);transition:width 1s linear}
-#mw{position:relative;flex:1;overflow:hidden}
-#map{width:100%;height:100%;background:#0d1015}
-.leaflet-container{background:#0d1015!important}
-.leaflet-control-attribution{background:rgba(10,12,15,.7)!important;color:var(--dim)!important;font-size:9px!important}
-.leaflet-control-attribution a{color:var(--accent)!important}
-.leaflet-bar a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--bb)!important}
-#loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,12,15,.85);z-index:1000;gap:14px;pointer-events:none}
+input[type=range]{width:80px;cursor:pointer;accent-color:var(--accent)}
+button{background:var(--panel2);border:1px solid var(--bb);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+#mapwrap{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+#glCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400}
+#statusbar{display:flex;gap:16px;padding:4px 14px;background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;font-size:10px;flex-wrap:wrap}
+.sv{color:var(--dim)}.sv span{color:var(--text)}.sv.ok span{color:var(--green)}.sv.warn span{color:var(--warn)}.sv.err span{color:var(--danger)}
+#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,12,15,.92);border:1px solid var(--border);border-radius:6px;padding:20px 32px;text-align:center;z-index:1000;backdrop-filter:blur(4px)}
 #loading.hidden{display:none}
-.spin{width:36px;height:36px;border:3px solid var(--bb);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-#lmsg{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+#lmsg{font-size:14px;color:var(--accent);margin-bottom:4px}
 #lsub{font-size:10px;color:var(--dim)}
-#err{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(255,45,45,.12);border:1px solid var(--danger);color:var(--danger);padding:8px 16px;border-radius:4px;font-size:11px;z-index:2000;display:none;max-width:88vw;text-align:center}
-#err.v{display:block}
-#leg{position:absolute;bottom:28px;right:10px;background:rgba(10,12,15,.85);border:1px solid var(--border);padding:8px 10px;border-radius:4px;z-index:500;min-width:110px}
-#lt{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.lr{display:flex;align-items:center;gap:6px;margin-bottom:2px}
-.ls{width:14px;height:10px;border-radius:2px;flex-shrink:0}
-.ll{font-size:10px;color:var(--text)}
-#source-badge{position:absolute;bottom:28px;left:10px;background:rgba(10,12,15,.85);border:1px solid var(--border);color:var(--dim);font-size:10px;padding:5px 8px;border-radius:4px;z-index:500}
+#err{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#2a0a0a;border:1px solid var(--danger);color:var(--danger);padding:8px 16px;border-radius:4px;z-index:1001;opacity:0;transition:opacity .3s;pointer-events:none}
+#err.v{opacity:1}
+#prodPanel{position:absolute;bottom:44px;left:10px;z-index:500;background:rgba(10,12,15,.95);border:1px solid var(--border);border-radius:8px;width:284px;max-height:68vh;display:flex;flex-direction:column;backdrop-filter:blur(10px);box-shadow:0 4px 24px rgba(0,0,0,.6)}
+#prodPanel.hidden{display:none}
+#ppHeader{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+#ppMeta{flex:1;min-width:0}
+#ppProdName{font-family:var(--sans);font-size:15px;font-weight:700;color:#fff;letter-spacing:.03em}
+#ppTime{font-size:9px;color:var(--accent);margin-top:2px;letter-spacing:.04em}
+#ppClose{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0}
+#ppClose:hover{color:var(--text)}
+#ppScroll{overflow-y:auto;flex:1;padding:4px 0}
+#ppScroll::-webkit-scrollbar{width:4px}
+#ppScroll::-webkit-scrollbar-thumb{background:var(--bb);border-radius:2px}
+.pp-cat{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:10px 14px 4px;font-family:var(--sans);font-weight:700}
+.pp-item{display:flex;align-items:center;gap:10px;padding:6px 14px;cursor:pointer;border-left:2px solid transparent;transition:background .1s}
+.pp-item:hover{background:rgba(255,255,255,.05)}
+.pp-item.active{background:rgba(0,212,255,.1);border-left-color:var(--accent)}
+.pp-swatch{width:32px;height:18px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
+.pp-info{flex:1;min-width:0}
+.pp-name{font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-unit{font-size:9px;color:var(--dim);margin-top:1px}
+#animBar{position:absolute;bottom:0;left:0;right:0;z-index:500;background:rgba(10,12,15,.92);border-top:1px solid var(--border);padding:5px 12px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(4px)}
+#animBar.hidden{display:none}
+#animTime{font-size:10px;color:var(--accent);min-width:140px;white-space:nowrap;letter-spacing:.04em}
+#animSlider{flex:1;accent-color:var(--accent)}
+.abt{background:none;border:1px solid var(--bb);color:var(--dim);padding:2px 9px;font-size:12px;border-radius:3px;cursor:pointer;line-height:1.4;font-family:var(--mono)}
+.abt:hover{color:var(--text);border-color:var(--accent)}
+.abt.on{color:var(--accent);border-color:var(--accent)}
+#liveBtn{font-size:9px;padding:2px 6px;letter-spacing:.06em;color:var(--green);border-color:var(--green)}
+#liveBtn.on{background:var(--green);color:#000;border-color:var(--green)}
+#legend{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:500;background:rgba(10,12,15,.85);border:1px solid var(--border);border-radius:5px;padding:8px 8px 8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px}
+#legend.hidden{display:none}
+#legCanvas{width:16px;height:200px;display:block;border-radius:2px}
+.leg-top,.leg-bot{font-size:9px;color:var(--dim);white-space:nowrap}
+.leaflet-control-zoom{display:none}
 </style>
 </head>
 <body>
 <div id="topbar">
-  <span class="logo">&#x2B21; LiveRadar</span>
-
-  <!-- Mode toggle -->
-  <div class="cg" style="gap:2px">
-    <button class="btn mode-btn active" id="btn-comp" onclick="setMode('COMP')">&#x25A6; Composite</button>
-    <button class="btn mode-btn" id="btn-site" onclick="setMode('SITE')">&#x25CE; Single Site</button>
-  </div>
-
-  <!-- Composite product -->
-  <div class="cg" id="comp-controls">
-    <span class="cl">Product</span>
-    <select id="comp-prd">
-      <option value="nexrad-n0q">NEXRAD N0Q Composite</option>
-      <option value="q2-hsr">MRMS SeamlessHSR</option>
-    </select>
-  </div>
-
-  <!-- Single site controls -->
-  <div class="cg" id="site-controls" style="display:none">
-    <span class="cl">Station</span>
-    <select id="ss">
-      <option value="KTLX">KTLX — OKC OK</option>
-      <option value="KFWS">KFWS — DFW TX</option>
-      <option value="KICT">KICT — Wichita KS</option>
-      <option value="KINX">KINX — Tulsa OK</option>
-      <option value="KSRX">KSRX — Ft Smith AR</option>
-      <option value="KSHV">KSHV — Shreveport LA</option>
-      <option value="KLZK">KLZK — Little Rock AR</option>
-      <option value="KNQA">KNQA — Memphis TN</option>
-      <option value="KGWX">KGWX — Columbus MS</option>
-      <option value="KBMX">KBMX — Birmingham AL</option>
-      <option value="KOHX">KOHX — Nashville TN</option>
-      <option value="KHTX">KHTX — Huntsville AL</option>
-      <option value="KEWX">KEWX — San Antonio TX</option>
-      <option value="KHGX">KHGX — Houston TX</option>
-      <option value="KLCH">KLCH — Lake Charles LA</option>
-    </select>
-    <span class="cl">Product</span>
-    <select id="sp">
-      <option value="REF">REF</option>
-      <option value="VEL">VEL</option>
-      <option value="ZDR">ZDR</option>
-      <option value="CC">CC</option>
-    </select>
-    <span class="cl">Tilt</span>
-    <select id="st">
-      <option value="1">1 — 0.5°</option>
-      <option value="2">2 — 0.9°</option>
-      <option value="3">3 — 1.3°</option>
-      <option value="4">4 — 1.8°</option>
-    </select>
-  </div>
-
+  <div class="logo">&#x26A1; NEXRAD</div>
   <div class="cg">
-    <span class="cl">Opacity</span>
-    <input type="range" id="osl" min="10" max="100" value="85" step="5">
-    <span id="ov" style="color:var(--dim)">85%</span>
+    <button id="btnComp" class="active" onclick="setMode('COMP')">&#9646; Composite</button>
+    <button id="btnSite" onclick="setMode('SITE')">&#9678; Single Site</button>
   </div>
-  <button class="btn" id="br">&#x21BB; Refresh</button>
-</div>
-
-<div id="sb">
-  <div class="si"><span class="sl">Source</span><span class="sv" id="i-src">—</span></div>
-  <div class="si"><span class="sl">Time</span><span class="sv" id="i-tim">—</span></div>
-  <div class="si"><span class="sl">Radials</span><span class="sv" id="i-rad" style="display:none">—</span></div>
-  <div class="si"><span class="sl">Status</span><span class="sv" id="i-sts">Init…</span></div>
-  <div id="cdb">
-    <span class="sl">Refresh in</span><span class="sv" id="i-cd">—</span>
-    <div id="cdt"><div id="cdf" style="width:100%"></div></div>
+  <div class="cg" id="ctrlComp">
+    <button onclick="togglePanel()">&#8862; Products</button>
+    <span id="prodLabel" style="font-size:11px;color:var(--accent)">Seamless HSR</span>
   </div>
+  <div class="cg" id="ctrlSite" style="display:none">
+    <div class="cl">Station</div>
+    <select id="selSite">
+      <option value="KTLX">KTLX &ndash; Oklahoma City</option><option value="KFWS">KFWS &ndash; Dallas/Ft Worth</option>
+      <option value="KICT">KICT &ndash; Wichita</option><option value="KINX">KINX &ndash; Tulsa</option>
+      <option value="KSRX">KSRX &ndash; Ft Smith</option><option value="KSHV">KSHV &ndash; Shreveport</option>
+      <option value="KLZK">KLZK &ndash; Little Rock</option><option value="KNQA">KNQA &ndash; Memphis</option>
+      <option value="KGWX">KGWX &ndash; Columbus MS</option><option value="KBMX">KBMX &ndash; Birmingham</option>
+      <option value="KOHX">KOHX &ndash; Nashville</option><option value="KHTX">KHTX &ndash; Huntsville</option>
+      <option value="KEWX">KEWX &ndash; Austin/S Antonio</option><option value="KHGX">KHGX &ndash; Houston</option>
+      <option value="KLCH">KLCH &ndash; Lake Charles</option>
+    </select>
+    <div class="cl">Product</div>
+    <select id="selPrd"><option value="REF">REF</option><option value="VEL">VEL</option><option value="ZDR">ZDR</option><option value="CC">CC</option></select>
+    <div class="cl">Tilt</div>
+    <select id="selTilt"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+  </div>
+  <div class="cg"><div class="cl">Opacity</div><input type="range" id="opSlider" min="10" max="100" value="90" oninput="setOpacity(this.value)"></div>
+  <button onclick="load()">&#8634; Refresh</button>
 </div>
-
-<div id="mw">
+<div id="mapwrap">
   <div id="map"></div>
-  <div id="loading"><div class="spin"></div><div id="lmsg">Loading…</div><div id="lsub"></div></div>
+  <canvas id="glCanvas"></canvas>
+  <div id="loading"><div id="lmsg">Initializing&hellip;</div><div id="lsub"></div></div>
   <div id="err"></div>
-  <div id="leg"><div id="lt">REF (dBZ)</div><div id="lb"></div></div>
-  <div id="source-badge">MRMS via Iowa State MESONET</div>
+  <div id="prodPanel" class="hidden">
+    <div id="ppHeader">
+      <div id="ppMeta"><div id="ppProdName">MRMS &bull; Reflectivity</div><div id="ppTime">Frame: &mdash; &bull; Live</div></div>
+      <button id="ppClose" onclick="togglePanel()">&#10005;</button>
+    </div>
+    <div id="ppScroll"></div>
+  </div>
+  <div id="animBar" class="hidden">
+    <button class="abt" onclick="animStep(-1)">&#9664;</button>
+    <button class="abt" id="btnPlay" onclick="animToggle()">&#9654;</button>
+    <button class="abt" onclick="animStep(1)">&#9654;|</button>
+    <input type="range" id="animSlider" min="0" max="0" value="0" oninput="animSeek(+this.value)">
+    <span id="animTime">&mdash;</span>
+    <button class="abt" id="liveBtn" onclick="animGoLive()">&#9679; LIVE</button>
+  </div>
+  <div id="legend" class="hidden">
+    <div class="leg-top" id="legMax">&mdash;</div>
+    <canvas id="legCanvas" width="16" height="200"></canvas>
+    <div class="leg-bot" id="legMin">&mdash;</div>
+  </div>
 </div>
-
+<div id="statusbar">
+  <div class="sv" id="sSrc">Source <span>&mdash;</span></div>
+  <div class="sv" id="sTime">Time <span>&mdash;</span></div>
+  <div class="sv" id="sRad" style="display:none">Radials <span>&mdash;</span></div>
+  <div class="sv ok" id="sSts">Status <span>Ready</span></div>
+  <div class="sv" id="sCd">Next <span>&mdash;</span></div>
+</div>
 <script>
 'use strict';
+const $=id=>document.getElementById(id);
+let map,gl,prog,glCanvas;
+let iSrc,iTime,iRad,iSts,iCd;
+let mode='COMP',opacity=0.90,siteOverlay=null,cdInt=null;
+let dataTex=null,colormapTex=null,quadBuf=null;
+let uCenterMX,uCenterMY,uMpp,uCanvasSize,uOpacity;
+const MRMS_COLS=7000,MRMS_ROWS=3500,EARTH_R=6378137.0,PROXY='/wise/USA/MRMS/CONUS';
+let animFrames=[],animIdx=0,animPlaying=false,animTimer=null;
+let curProduct='SeamlessHSR',curColType='refl';
+let decodeWorker=null;
+const pendingDecode=new Map();
+let decodeId=0;
 
-// ── Helpers ──────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const iSrc=$('i-src'), iTim=$('i-tim'), iRad=$('i-rad'), iSts=$('i-sts');
-const iCd=$('i-cd'), iCdf=$('cdf');
+// ── Product Definitions ──────────────────────────────────────────────────
+const PRODUCT_CATS=[
+  {cat:'Reflectivity',items:[
+    {id:'SeamlessHSR',name:'Reflectivity',sub:'Seamless HSR',unit:'dBZ',colType:'refl'}]},
+  {cat:'Echo Tops',items:[
+    {id:'EchoTop_18',name:'Echo Top 18 dBZ',unit:'km',colType:'et'},
+    {id:'EchoTop_30',name:'Echo Top 30 dBZ',unit:'km',colType:'et'},
+    {id:'EchoTop_50',name:'Echo Top 50 dBZ',unit:'km',colType:'et'},
+    {id:'EchoTop_60',name:'Echo Top 60 dBZ',unit:'km',colType:'et'}]},
+  {cat:'Hail / VIL',items:[
+    {id:'VIL',name:'Vertically Integrated Liquid',unit:'kg/m\u00b2',colType:'vil'},
+    {id:'VIL_Density',name:'VIL Density',unit:'g/m\u00b3',colType:'vil'},
+    {id:'MESH',name:'MESH Hail Size',unit:'mm',colType:'mesh'},
+    {id:'SHI',name:'Severe Hail Index',unit:'',colType:'shi'}]},
+  {cat:'Precipitation',items:[
+    {id:'PrecipRate',name:'Precip Rate',unit:'mm/hr',colType:'qpe'},
+    {id:'PrecipFlag',name:'Precip Type',unit:'',colType:'ptype'}]},
+  {cat:'QPE \u2014 Radar Only',items:[
+    {id:'RadarOnly_QPE_01H',name:'Radar QPE 1-hour',unit:'mm',colType:'qpe'},
+    {id:'RadarOnly_QPE_03H',name:'Radar QPE 3-hour',unit:'mm',colType:'qpe'},
+    {id:'RadarOnly_QPE_06H',name:'Radar QPE 6-hour',unit:'mm',colType:'qpe'},
+    {id:'RadarOnly_QPE_24H',name:'Radar QPE 24-hour',unit:'mm',colType:'qpe'},
+    {id:'RadarOnly_QPE_48H',name:'Radar QPE 48-hour',unit:'mm',colType:'qpe'},
+    {id:'RadarOnly_QPE_72H',name:'Radar QPE 72-hour',unit:'mm',colType:'qpe'}]},
+  {cat:'QPE \u2014 Multi-Sensor Pass 1',items:[
+    {id:'MultiSensor_QPE_01H_Pass1',name:'MS QPE 1-hour P1',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_03H_Pass1',name:'MS QPE 3-hour P1',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_06H_Pass1',name:'MS QPE 6-hour P1',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_24H_Pass1',name:'MS QPE 24-hour P1',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_48H_Pass1',name:'MS QPE 48-hour P1',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_72H_Pass1',name:'MS QPE 72-hour P1',unit:'mm',colType:'qpe'}]},
+  {cat:'QPE \u2014 Multi-Sensor Pass 2',items:[
+    {id:'MultiSensor_QPE_01H_Pass2',name:'MS QPE 1-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_03H_Pass2',name:'MS QPE 3-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_06H_Pass2',name:'MS QPE 6-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_12H_Pass2',name:'MS QPE 12-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_24H_Pass2',name:'MS QPE 24-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_48H_Pass2',name:'MS QPE 48-hour P2',unit:'mm',colType:'qpe'},
+    {id:'MultiSensor_QPE_72H_Pass2',name:'MS QPE 72-hour P2',unit:'mm',colType:'qpe'}]},
+  {cat:'Rotation',items:[
+    {id:'RotationTrack30min',name:'Rotation Track 30-min',unit:'0.001/s',colType:'rot'},
+    {id:'RotationTrack60min',name:'Rotation Track 60-min',unit:'0.001/s',colType:'rot'}]}
+];
+function getProdInfo(id){for(const c of PRODUCT_CATS)for(const p of c.items)if(p.id===id)return p;return null;}
 
-function showLoad(msg,sub=''){$('loading').classList.remove('hidden');$('lmsg').textContent=msg;$('lsub').textContent=sub;}
-function hideLoad(){$('loading').classList.add('hidden');}
-function showErr(msg){const e=$('err');e.textContent=msg;e.classList.add('v');setTimeout(()=>e.classList.remove('v'),8000);}
-function setStatus(t,cls=''){iSts.className='sv'+(cls?' '+cls:'');iSts.textContent=t;}
-
-// ── Map ───────────────────────────────────────────────────────────────
-const map = L.map('map',{zoomControl:true,attributionControl:true}).setView([37,-95],5);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-  attribution:'&copy; <a href="https://carto.com/">CARTO</a>',maxZoom:18,subdomains:'abcd'
-}).addTo(map);
-
-let radarLayer = null;
-let curOp = 85;
-let curMode = 'COMP';
-let busy = false;
-let cdTimer = null, cdSec = 0, cdTotal = 120;
-let siteOverlay = null;
-
-// ── Opacity slider ────────────────────────────────────────────────────
-$('osl').addEventListener('input', e => {
-  curOp = +e.target.value;
-  $('ov').textContent = curOp + '%';
-  if (radarLayer) {
-    radarLayer.setOpacity(curOp/100);
-
+// ── Colormap LUTs ────────────────────────────────────────────────────────
+function buildLut(stops){
+  const lut=new Uint8Array(256*4);
+  for(let v=0;v<256;v++){
+    let lo=stops[0],hi=stops[stops.length-1];
+    for(let i=0;i<stops.length;i++){
+      if(stops[i][0]<=v)lo=stops[i];
+      if(stops[i][0]>=v&&stops[i][0]<=hi[0])hi=stops[i];
+    }
+    let r,g,b,a;
+    if(lo[0]===hi[0]){[,r,g,b,a]=lo;}
+    else{const t=(v-lo[0])/(hi[0]-lo[0]);r=Math.round(lo[1]+t*(hi[1]-lo[1]));g=Math.round(lo[2]+t*(hi[2]-lo[2]));b=Math.round(lo[3]+t*(hi[3]-lo[3]));a=Math.round(lo[4]+t*(hi[4]-lo[4]));}
+    lut[v*4]=r;lut[v*4+1]=g;lut[v*4+2]=b;lut[v*4+3]=a;
   }
-  if (siteOverlay) siteOverlay.setOpacity(curOp/100);
-});
+  return lut;
+}
+const COLORMAPS={};
+// Reflectivity NWS standard (val*0.5-32 dBZ; val 74=5dBZ, 164=50dBZ)
+COLORMAPS.refl=buildLut([
+  [0,0,0,0,0],[73,0,0,0,0],
+  [74,4,233,231,200],[84,1,159,244,210],[94,3,0,244,220],
+  [104,2,253,2,230],[114,1,197,1,230],[124,0,142,0,230],
+  [134,253,248,2,240],[144,229,188,0,240],[154,253,149,0,245],
+  [164,253,0,0,255],[174,212,0,0,255],[184,188,0,0,255],
+  [194,248,0,253,255],[204,152,84,198,255],[214,255,255,255,255],[254,255,255,255,255]]);
+// Echo Tops (val*0.1 km)
+COLORMAPS.et=buildLut([
+  [0,0,0,0,0],[1,0,30,180,220],[15,0,100,255,220],[30,0,210,255,220],
+  [50,0,230,50,220],[70,180,255,0,230],[90,255,255,0,235],
+  [110,255,180,0,240],[130,255,80,0,250],[150,255,0,0,255],
+  [180,255,0,200,255],[210,255,255,255,255],[254,255,255,255,255]]);
+// QPE
+COLORMAPS.qpe=buildLut([
+  [0,0,0,0,0],[1,180,250,255,200],[20,0,200,50,220],[50,0,230,0,230],
+  [80,200,255,0,235],[110,255,255,0,240],[140,255,170,0,245],
+  [170,255,80,0,250],[200,255,0,0,255],[225,200,0,180,255],[254,255,255,255,255]]);
+// VIL
+COLORMAPS.vil=buildLut([
+  [0,0,0,0,0],[1,0,100,255,200],[10,0,230,80,210],[20,0,230,0,220],
+  [40,230,255,0,230],[60,255,180,0,240],[80,255,60,0,250],
+  [100,255,0,0,255],[120,255,0,200,255],[160,255,255,255,255],[254,255,255,255,255]]);
+// MESH hail
+COLORMAPS.mesh=buildLut([
+  [0,0,0,0,0],[1,0,230,230,200],[10,0,230,80,210],[24,255,255,0,230],
+  [36,255,170,0,240],[50,255,80,0,250],[72,255,0,0,255],
+  [100,200,0,255,255],[130,255,255,255,255],[254,255,255,255,255]]);
+// SHI
+COLORMAPS.shi=buildLut([
+  [0,0,0,0,0],[1,0,200,255,200],[40,0,230,50,210],
+  [80,255,255,0,230],[120,255,150,0,240],[160,255,0,0,255],
+  [200,255,0,255,255],[254,255,255,255,255]]);
+// Rotation
+COLORMAPS.rot=buildLut([
+  [0,0,0,0,0],[200,0,0,0,0],[210,50,50,200,180],[220,200,50,200,200],
+  [230,255,0,200,230],[240,255,50,0,245],[250,255,255,0,255],[254,255,255,255,255]]);
+// Precip type
+COLORMAPS.ptype=buildLut([
+  [0,0,0,0,0],[1,0,200,255,220],[2,0,80,200,220],[3,200,230,255,230],
+  [9,255,200,0,230],[10,0,230,0,220],[90,255,80,0,240],[96,200,0,200,230],
+  [100,255,255,255,220],[254,128,128,128,180]]);
+function getLut(t){return COLORMAPS[t]||COLORMAPS.refl;}
+function getLegInfo(t){
+  const m={refl:{max:'75 dBZ',min:'5 dBZ'},et:{max:'21+ km',min:'0.1 km'},
+    qpe:{max:'Extreme',min:'Trace'},vil:{max:'80+ kg/m\u00b2',min:'1 kg/m\u00b2'},
+    mesh:{max:'65+ mm',min:'0.5 mm'},shi:{max:'High',min:'Low'},
+    rot:{max:'Extreme',min:'Weak'},ptype:{max:'Type',min:'None'}};
+  return m[t]||{max:'—',min:'—'};
+}
 
-// ── Mode toggle ───────────────────────────────────────────────────────
-function setMode(mode) {
-  curMode = mode;
-  $('btn-comp').classList.toggle('active', mode==='COMP');
-  $('btn-site').classList.toggle('active', mode==='SITE');
-  $('comp-controls').style.display = mode==='COMP' ? '' : 'none';
-  $('site-controls').style.display = mode==='SITE' ? '' : 'none';
-  $('i-rad').style.display = mode==='SITE' ? '' : 'none';
-  $('source-badge').textContent = mode==='COMP'
-    ? 'MRMS via Iowa State MESONET'
-    : 'NEXRAD Level-2 via Unidata S3';
-  clearOverlays();
+// ── Decode Worker ────────────────────────────────────────────────────────
+const WSRC=`self.onmessage=function(e){const{id,buffer,offset}=e.data;const b=new Uint8Array(buffer,offset);const T=3500*7000;const out=new Uint8Array(T);let i=0,p=0;while(i+1<b.length&&p<T){const c=b[i++],v=b[i++],e2=Math.min(p+c,T);out.fill(v,p,e2);p=e2;}self.postMessage({id,data:out},[out.buffer]);};`;
+function initWorker(){
+  const blob=new Blob([WSRC],{type:'application/javascript'});
+  decodeWorker=new Worker(URL.createObjectURL(blob));
+  decodeWorker.onmessage=e=>{const{id,data}=e.data;const cb=pendingDecode.get(id);if(cb){pendingDecode.delete(id);cb(data);}};
+}
+async function decodeWise(ab){
+  const bytes=new Uint8Array(ab);
+  let js=-1;for(let i=0;i<500;i++)if(bytes[i]===0x7B){js=i;break;}
+  let d=0,je=-1;for(let i=js;i<Math.min(bytes.length,50000);i++){if(bytes[i]===0x7B)d++;else if(bytes[i]===0x7D){d--;if(d===0){je=i;break;}}}
+  const off=je+1;
+  if(!decodeWorker)initWorker();
+  return new Promise(res=>{const id=++decodeId;pendingDecode.set(id,res);decodeWorker.postMessage({id,buffer:ab,offset:off},[ab]);});
+}
+
+// ── WebGL Setup ──────────────────────────────────────────────────────────
+const VS=`attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}`;
+const FS=`precision highp float;
+uniform sampler2D u_data;uniform sampler2D u_cmap;
+uniform float u_cmx;uniform float u_cmy;uniform float u_mpp;
+uniform vec2 u_sz;uniform float u_op;
+const float R=6378137.0,PI=3.14159265,R2D=180.0/3.14159265;
+const float LN=-130.0,LX=-60.0,LA=20.0,LB=55.0,LR=70.0,LT=35.0;
+void main(){
+  vec2 off=gl_FragCoord.xy-u_sz*0.5;
+  float mx=u_cmx+off.x*u_mpp,my=u_cmy-off.y*u_mpp;
+  float lon=mx/R*R2D,lat=(2.0*atan(exp(my/R))-PI*0.5)*R2D;
+  float u=(lon-LN)/LR,v=(LB-lat)/LT;
+  if(u<0.0||u>1.0||v<0.0||v>1.0){discard;return;}
+  float val=texture2D(u_data,vec2(u,v)).r;
+  if(val>0.998){discard;return;}
+  vec4 col=texture2D(u_cmap,vec2(val,0.5));
+  if(col.a<0.01){discard;return;}
+  gl_FragColor=vec4(col.rgb,col.a*u_op);
+}`;
+
+function initGL(){
+  glCanvas=$('glCanvas');
+  gl=glCanvas.getContext('webgl',{premultipliedAlpha:false,alpha:true});
+  if(!gl)return false;
+  function cs(t,s){const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(sh));return sh;}
+  prog=gl.createProgram();
+  gl.attachShader(prog,cs(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,cs(gl.FRAGMENT_SHADER,FS));
+  gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(prog));return false;}
+  gl.useProgram(prog);
+  quadBuf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  uCenterMX=gl.getUniformLocation(prog,'u_cmx');
+  uCenterMY=gl.getUniformLocation(prog,'u_cmy');
+  uMpp=gl.getUniformLocation(prog,'u_mpp');
+  uCanvasSize=gl.getUniformLocation(prog,'u_sz');
+  uOpacity=gl.getUniformLocation(prog,'u_op');
+  gl.uniform1i(gl.getUniformLocation(prog,'u_data'),0);
+  gl.uniform1i(gl.getUniformLocation(prog,'u_cmap'),1);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  dataTex=mkDataTex(null);colormapTex=mkCmapTex(new Uint8Array(256*4));
+  resizeGL();window.addEventListener('resize',resizeGL);
+  return true;
+}
+function resizeGL(){const w=$('mapwrap');glCanvas.width=w.clientWidth;glCanvas.height=w.clientHeight;if(gl){gl.viewport(0,0,glCanvas.width,glCanvas.height);renderGL();}}
+function mkDataTex(data){
+  const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  if(data)gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,MRMS_COLS,MRMS_ROWS,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
+  else gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,1,1,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,new Uint8Array([255]));
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  return t;
+}
+function mkCmapTex(lut){
+  const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,1,0,gl.RGBA,gl.UNSIGNED_BYTE,lut);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  return t;
+}
+function renderGL(){
+  if(!gl||!dataTex||mode!=='COMP')return;
+  const W=glCanvas.width,H=glCanvas.height;if(!W||!H)return;
+  gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  const c=map.getCenter(),z=map.getZoom();
+  const mpp=2*Math.PI*EARTH_R/(256*Math.pow(2,z));
+  gl.useProgram(prog);
+  gl.uniform1f(uCenterMX,c.lng*(Math.PI/180)*EARTH_R);
+  gl.uniform1f(uCenterMY,Math.log(Math.tan(Math.PI/4+c.lat*(Math.PI/360)))*EARTH_R);
+  gl.uniform1f(uMpp,mpp);
+  gl.uniform2f(uCanvasSize,W,H);
+  gl.uniform1f(uOpacity,opacity);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,dataTex);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,colormapTex);
+  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+  const p=gl.getAttribLocation(prog,'a_pos');
+  gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,2,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+
+// ── Data Loading ─────────────────────────────────────────────────────────
+async function loadComposite(){
+  clearInterval(cdInt);animStop();
+  setStatus('Loading\u2026','warn');showLoad(`Loading ${getProdInfo(curProduct)?.name||curProduct}\u2026`);
+  iSrc.textContent='MRMS/CONUS';
+  try{
+    const txt=await fetch(`${PROXY}/${curProduct}/dir.list`).then(r=>{if(!r.ok)throw new Error(`dir.list ${r.status}`);return r.text();});
+    const files=txt.trim().split('\n').filter(Boolean);
+    if(!files.length)throw new Error('No frames');
+    const N=Math.min(14,files.length);
+    const recent=files.slice(-N);
+    animFrames=recent.map(f=>({filename:f,data:null,time:fn2time(f)}));
+    animIdx=animFrames.length-1;
+    $('animSlider').max=animFrames.length-1;
+    $('animSlider').value=animIdx;
+    $('animBar').classList.remove('hidden');
+    $('liveBtn').classList.add('on');
+    await loadFrame(animIdx);
+    showFrame(animIdx);
+    preloadFrames();
+    hideLoad();setStatus('OK','ok');startCd(120);
+  }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();console.error(e);}
+}
+async function loadFrame(idx){
+  if(animFrames[idx]?.data)return;
+  const f=animFrames[idx];if(!f)return;
+  const buf=await fetch(`${PROXY}/${curProduct}/${f.filename}`).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.arrayBuffer();});
+  f.data=await decodeWise(buf);
+}
+async function preloadFrames(){
+  for(let i=animFrames.length-2;i>=0;i--){
+    if(animFrames[i]?.data)continue;
+    try{await loadFrame(i);}catch(e){console.warn('preload fail',i);}
+  }
+}
+function showFrame(idx){
+  const f=animFrames[idx];if(!f?.data)return;
+  if(dataTex)gl.deleteTexture(dataTex);
+  dataTex=mkDataTex(f.data);
+  renderGL();
+  $('animTime').textContent=f.time;
+  $('animSlider').value=idx;
+  $('ppTime').textContent=`Frame: ${f.time} \u2022 ${idx===animFrames.length-1?'\u25cf Live':'Archive'}`;
+  iTime.textContent=f.time;
+  $('liveBtn').classList.toggle('on',idx===animFrames.length-1);
+}
+function fn2time(fn){
+  const m=fn.match(/(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_\d{2}/);
+  return m?`${m[2]}/${m[3]} ${m[4]}:${m[5]}z`:fn;
+}
+
+// ── Animation ────────────────────────────────────────────────────────────
+function animToggle(){animPlaying?animStop():animPlay();}
+function animPlay(){
+  animPlaying=true;$('btnPlay').classList.add('on');$('btnPlay').textContent='\u25a0';
+  clearInterval(cdInt);doAnim();
+}
+function animStop(){
+  animPlaying=false;clearTimeout(animTimer);animTimer=null;
+  $('btnPlay').classList.remove('on');$('btnPlay').textContent='\u25b6';
+}
+function doAnim(){
+  if(!animPlaying)return;
+  animTimer=setTimeout(()=>{
+    animIdx=(animIdx+1)%animFrames.length;
+    if(animFrames[animIdx]?.data)showFrame(animIdx);
+    else loadFrame(animIdx).then(()=>showFrame(animIdx)).catch(()=>{});
+    doAnim();
+  },animIdx===animFrames.length-1?1200:400);
+}
+function animStep(d){
+  animStop();animIdx=Math.max(0,Math.min(animFrames.length-1,animIdx+d));
+  if(animFrames[animIdx]?.data)showFrame(animIdx);
+  else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
+}
+function animSeek(v){
+  animStop();animIdx=v;
+  if(animFrames[animIdx]?.data)showFrame(animIdx);
+  else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
+}
+function animGoLive(){animStop();animIdx=animFrames.length-1;if(animFrames[animIdx]?.data)showFrame(animIdx);}
+
+// ── Product Panel ─────────────────────────────────────────────────────────
+function buildPanel(){
+  const sc=$('ppScroll');sc.innerHTML='';
+  for(const cat of PRODUCT_CATS){
+    const ce=document.createElement('div');ce.className='pp-cat';ce.textContent=cat.cat;sc.appendChild(ce);
+    for(const p of cat.items){
+      const item=document.createElement('div');
+      item.className='pp-item'+(p.id===curProduct?' active':'');
+      item.dataset.id=p.id;
+      const sw=document.createElement('canvas');sw.className='pp-swatch';sw.width=32;sw.height=18;
+      drawSwatch(sw,p.colType);item.appendChild(sw);
+      const inf=document.createElement('div');inf.className='pp-info';
+      const nm=document.createElement('div');nm.className='pp-name';nm.textContent=p.name;
+      const un=document.createElement('div');un.className='pp-unit';un.textContent=p.sub||p.unit||'';
+      inf.appendChild(nm);inf.appendChild(un);item.appendChild(inf);
+      item.onclick=()=>selectProduct(p.id);
+      sc.appendChild(item);
+    }
+  }
+}
+function drawSwatch(canvas,ct){
+  const ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(32,18);
+  for(let x=0;x<32;x++){const v=Math.round((x/31)*254)+1,r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];for(let y=0;y<18;y++){const i=(y*32+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}}
+  ctx.putImageData(img,0,0);
+}
+function drawLegend(ct){
+  const canvas=$('legCanvas'),ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(16,200);
+  for(let y=0;y<200;y++){const v=Math.round(((199-y)/199)*254)+1,r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];for(let x=0;x<16;x++){const i=(y*16+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}}
+  ctx.putImageData(img,0,0);
+  const li=getLegInfo(ct);$('legMax').textContent=li.max;$('legMin').textContent=li.min;
+  $('legend').classList.remove('hidden');
+}
+async function selectProduct(id){
+  if(id===curProduct){togglePanel();return;}
+  curProduct=id;const info=getProdInfo(id);curColType=info?.colType||'refl';
+  if(colormapTex)gl.deleteTexture(colormapTex);
+  colormapTex=mkCmapTex(getLut(curColType));
+  document.querySelectorAll('.pp-item').forEach(el=>el.classList.toggle('active',el.dataset.id===id));
+  $('prodLabel').textContent=info?.name||id;
+  $('ppProdName').textContent=`MRMS \u2022 ${info?.name||id}`;
+  drawLegend(curColType);togglePanel();
+  await loadComposite();
+}
+function togglePanel(){$('prodPanel').classList.toggle('hidden');}
+
+// ── UI ────────────────────────────────────────────────────────────────────
+function setMode(m){
+  mode=m;
+  $('btnComp').classList.toggle('active',m==='COMP');
+  $('btnSite').classList.toggle('active',m==='SITE');
+  $('ctrlComp').style.display=m==='COMP'?'':'none';
+  $('ctrlSite').style.display=m==='SITE'?'':'none';
+  $('sRad').style.display=m==='SITE'?'':'none';
+  $('animBar').classList.toggle('hidden',m!=='COMP');
+  $('legend').classList.toggle('hidden',m!=='COMP');
+  if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
+  if(m==='COMP'){renderGL();}else{if(gl){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}}
   load();
 }
+function setOpacity(v){opacity=v/100;renderGL();if(siteOverlay)siteOverlay.setOpacity(opacity);}
+function showLoad(m,s=''){$('loading').classList.remove('hidden');$('lmsg').textContent=m;$('lsub').textContent=s;}
+function hideLoad(){$('loading').classList.add('hidden');}
+function showErr(m){const e=$('err');e.textContent=m;e.classList.add('v');setTimeout(()=>e.classList.remove('v'),8000);}
+function setStatus(t,c=''){const el=$('sSts');el.className='sv'+(c?' '+c:'');el.querySelector('span').textContent=t;}
+function startCd(s){clearInterval(cdInt);let t=s;iCd.textContent=t+'s';cdInt=setInterval(()=>{t--;iCd.textContent=t+'s';if(t<=0){clearInterval(cdInt);load();}},1000);}
 
-function clearOverlays() {
-  if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
-  if (siteOverlay){ map.removeLayer(siteOverlay); siteOverlay = null; }
+// ── Single-Site ───────────────────────────────────────────────────────────
+const REF_STOPS=[[5,[4,233,231]],[10,[1,159,244]],[15,[3,0,244]],[20,[2,253,2]],[25,[1,197,1]],[30,[0,142,0]],[35,[253,248,2]],[40,[229,188,0]],[45,[253,149,0]],[50,[253,0,0]],[55,[212,0,0]],[60,[188,0,0]],[65,[248,0,253]],[70,[152,84,198]],[75,[255,255,255]]];
+function gradient(stops,v){if(v<=stops[0][0])return stops[0][1];if(v>=stops[stops.length-1][0])return stops[stops.length-1][1];for(let i=0;i<stops.length-1;i++){if(v>=stops[i][0]&&v<=stops[i+1][0]){const t=(v-stops[i][0])/(stops[i+1][0]-stops[i][0]);return stops[i][1].map((c,j)=>c+t*(stops[i+1][1][j]-c));}}return[128,128,128];}
+async function loadSingleSite(){
+  clearInterval(cdInt);animStop();setStatus('Scanning S3\u2026','warn');showLoad('Scanning S3\u2026');
+  if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
+  const site=$('selSite').value,prd=$('selPrd').value,tilt=parseInt($('selTilt').value);
+  iSrc.textContent='S3/'+site;iRad.textContent='—';
+  try{
+    const r=await fetch(`https://unidata-nexrad-level2-chunks.s3.amazonaws.com/?list-type=2&prefix=${site}/&max-keys=400`);
+    const xml=await r.text(),dom=new DOMParser().parseFromString(xml,'text/xml');
+    const keys=[...dom.querySelectorAll('Key')].map(k=>k.textContent);
+    const cks=keys.filter(k=>/_S\d+\.bz2$/i.test(k));
+    if(!cks.length)throw new Error('No chunks');
+    const bv={};cks.forEach(k=>{const m=k.match(/(.*?)_S(\d+)\.bz2/i);if(m){const b=m[1];if(!bv[b])bv[b]=[];bv[b].push(k);}});
+    const vols=Object.keys(bv).sort(),latest=bv[vols[vols.length-1]].sort();
+    showLoad(`Loading ${site}\u2026`,`${latest.length} chunks`);
+    const bufs=await fetchChunks(latest,30);
+    const{azimuth,data,gateSize,firstGate,rangeM}=parseAllChunks(bufs,tilt,prd);
+    if(!azimuth.length)throw new Error('No radials for tilt '+tilt);
+    const ts=vols[vols.length-1].match(/(\d{8}_\d{6})/);
+    iTime.textContent=ts?ts[1].replace('_',' '):'—';iRad.textContent=azimuth.length;
+    const cnv=renderToCanvas(azimuth,data,gateSize,firstGate,prd,rangeM);
+    const ctr=map.getCenter(),bnds=calcBounds(ctr,rangeM||460000);
+    if(siteOverlay)map.removeLayer(siteOverlay);
+    siteOverlay=L.imageOverlay(cnv.toDataURL(),bnds,{opacity,interactive:false}).addTo(map);
+    setStatus('OK','ok');hideLoad();startCd(300);
+  }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();}
 }
+function calcBounds(c,rm){const d=rm/111320,dl=rm/(111320*Math.cos(c.lat*Math.PI/180));return[[c.lat-d,c.lng-dl],[c.lat+d,c.lng+dl]];}
+async function fetchChunks(chunks,lim){const base='https://unidata-nexrad-level2-chunks.s3.amazonaws.com/';const sel=chunks.slice(-lim);const bufs=await Promise.all(sel.map(async k=>{const r=await fetch(base+k);if(!r.ok)return null;const ab=await r.arrayBuffer();return new Uint8Array(Bzip2.decompress(new Uint8Array(ab),{small:false}));}));return bufs.filter(Boolean);}
+function parseAllChunks(bufs,tilt,product){const aAz=[],aD=[],elevs=[];let gs=0,fg=0,rm=0;for(const buf of bufs){const view=new DataView(buf.buffer);let off=24;while(off+28<buf.length){const base=off+28;if(base+4>buf.length)break;const mt=view.getUint8(off+15);if(mt!==31){off+=2432+12;continue;}const r=parseMsg31(buf,view,base,elevs);if(!r){off+=2432+12;continue;}const{az,el,moments}=r;if(!elevs.length)elevs.push(el);if(Math.abs(el-elevs[0])>0.5&&elevs.length<=tilt-1)elevs.push(el);if(elevs.length-1===tilt-1){const m=moments[product];if(m){aAz.push(az);aD.push(m.vals);gs=m.gateSize;fg=m.firstGate;rm=Math.max(rm,m.firstGate+m.gateSize*m.vals.length);}}const bc=view.getUint8(base+8);off+=Math.max(28+bc*4+100+12,2432+12);}}return{azimuth:aAz,data:aD,gateSize:gs,firstGate:fg,rangeM:rm};}
+function parseMsg31(data,view,base,elevs){try{if(base+28>data.length)return null;const az=view.getUint16(base,false)/8,el=view.getUint16(base+2,false)/8;const nm=view.getUint8(base+8);const moments={};for(let m=0;m<nm&&m<8;m++){const mb2=base+28+m*4;if(mb2+4>data.length)break;const moff=view.getUint32(mb2,false);if(!moff||base+moff+28>data.length)continue;const mb=base+moff;const name=String.fromCharCode(data[mb],data[mb+1],data[mb+2],data[mb+3]).replace(/\0/g,'').trim();const ng=view.getUint16(mb+8,false),fg=view.getUint16(mb+10,false),gs2=view.getUint16(mb+12,false);const ws=view.getUint8(mb+19),scale=view.getFloat32(mb+20,false),off2=view.getFloat32(mb+24,false);if(ws!==8&&ws!==16)continue;const vals=[];for(let g=0;g<ng;g++){const gi=mb+28+(ws===8?g:g*2);if(gi>=data.length)break;const raw=ws===8?data[gi]:view.getUint16(gi,false);vals.push(raw<=1?null:(raw-off2)/scale);}moments[name]={vals,gateSize:gs2,firstGate:fg};}return{az,el,moments};}catch(e){return null;}}
+function renderToCanvas(azimuth,dataArr,gs,fg,prd,rm){const sz=1024,c=document.createElement('canvas');c.width=sz;c.height=sz;const ctx=c.getContext('2d'),img=ctx.createImageData(sz,sz),px=img.data;const cx=sz/2,sc=sz/(2*rm);for(let i=0;i<azimuth.length-1;i++){const a0=azimuth[i]*Math.PI/180,a1=azimuth[i+1]*Math.PI/180;const gates=dataArr[i];for(let g=0;g<gates.length;g++){const v=gates[g];if(v===null)continue;const[r,gv,b,a]=siteColor(v,prd);if(a===0)continue;const r0=(fg+g*gs)*sc,r1=r0+gs*sc;const da=Math.abs(a1-a0)||0.01;for(let ang=a0;ang<=a1+0.001;ang+=da*0.3){for(let rr=r0;rr<r1+.5;rr+=0.6){const px2=Math.round(cx+Math.sin(ang)*rr),py2=Math.round(cx-Math.cos(ang)*rr);if(px2<0||px2>=sz||py2<0||py2>=sz)continue;const idx=(py2*sz+px2)*4;px[idx]=r;px[idx+1]=gv;px[idx+2]=b;px[idx+3]=a;}}}}ctx.putImageData(img,0,0);return c;}
+function siteColor(v,prd){if(prd==='REF'){if(v<5)return[0,0,0,0];return[...gradient(REF_STOPS,v).map(Math.round),230];}if(prd==='VEL'){if(Math.abs(v)<1)return[0,0,0,0];if(v>0)return[...gradient([[1,[0,200,0]],[30,[0,100,0]],[60,[0,50,0]],[90,[0,30,0]]],Math.min(v,90)).map(Math.round),230];return[...gradient([[0,[0,0,50]],[-30,[0,0,100]],[-60,[0,0,200]],[-90,[0,0,255]]],Math.max(v,-90)).map(Math.round),230];}if(prd==='ZDR'){const t=(v+2)/8;return[...gradient([[0,[0,0,220]],[0.5,[0,220,0]],[1,[220,0,0]]],Math.max(0,Math.min(1,t))).map(Math.round),220];}if(prd==='CC'){if(v<0.7)return[0,0,0,0];const t=(v-0.7)/0.3;return[...gradient([[0,[200,0,0]],[0.5,[220,220,0]],[1,[0,200,0]]],t).map(Math.round),220];}return[128,128,128,120];}
 
-// ── Countdown ─────────────────────────────────────────────────────────
-function startCd(secs) {
-  clearInterval(cdTimer);
-  cdTotal = secs; cdSec = secs;
-  iCdf.style.width = '100%';
-  iCd.textContent = secs+'s';
-  cdTimer = setInterval(()=>{
-    cdSec--;
-    iCd.textContent = cdSec+'s';
-    iCdf.style.width = (cdSec/cdTotal*100)+'%';
-    if (cdSec <= 0) { clearInterval(cdTimer); load(); }
-  }, 1000);
-}
+// ── Init ──────────────────────────────────────────────────────────────────
+async function load(){if(mode==='COMP')await loadComposite();else await loadSingleSite();}
 
-$('br').addEventListener('click', ()=>{ clearInterval(cdTimer); load(); });
-
-// ── COMPOSITE MODE — Iowa State WMS GetMap (smooth, viewport-resolution) ──
-// n0q: smooth WMS (rendered at viewport resolution, no tile seams)
-// q2-hsr: tile fallback (no WMS available for this product)
-const WMS_SMOOTH = new Set(['nexrad-n0q']);
-
-function buildWmsUrl() {
-  const b = map.getBounds();
-  const sw = L.CRS.EPSG3857.project(b.getSouthWest());
-  const ne = L.CRS.EPSG3857.project(b.getNorthEast());
-  const bbox = `${sw.x},${sw.y},${ne.x},${ne.y}`;
-  const sz = map.getSize();
-  return `https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=nexrad-n0q-900913&STYLES=&SRS=EPSG:3857&BBOX=${bbox}&WIDTH=${sz.x}&HEIGHT=${sz.y}&FORMAT=image/png&TRANSPARENT=true&ts=${Math.floor(Date.now()/60000)}`;
-}
-
-async function fetchWmsOverlay() {
-  if (curMode !== 'COMP') return;
-  const url = buildWmsUrl();
-
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
-
-  if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
-  radarLayer = L.imageOverlay(img.src, map.getBounds(), {
-    opacity: curOp/100,
-    attribution: 'NEXRAD via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
-    zIndex: 200, interactive: false,
-  }).addTo(map);
-
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
-}
-
-// Re-fetch when map moves/zooms (debounced 300ms)
-let wmsDebounce = null;
-function scheduleWmsRefresh() {
-  if (curMode !== 'COMP') return;
-  const product = $('comp-prd').value;
-  clearTimeout(wmsDebounce);
-  if (WMS_SMOOTH.has(product)) {
-    wmsDebounce = setTimeout(fetchWmsOverlay, 300);
-  }
-}
-
-async function loadComposite() {
-  const product = $('comp-prd').value;
-  const labels = { 'nexrad-n0q': 'NEXRAD N0Q (smooth)', 'q2-hsr': 'MRMS SeamlessHSR' };
-  showLoad('Loading ' + (labels[product]||product) + '…', 'Iowa State MESONET');
-  setStatus('Fetching…','warn');
-  clearOverlays();
-  iSrc.textContent = labels[product] || product;
-  $('source-badge').textContent = 'Iowa State MESONET';
-
-  if (!map._wmsListeners) {
-    map.on('moveend zoomend', scheduleWmsRefresh);
-    map._wmsListeners = true;
-  }
-
-  if (WMS_SMOOTH.has(product)) {
-    // Smooth WMS path — renders at viewport resolution, re-fetches on pan/zoom
-    try {
-      await fetchWmsOverlay();
-      hideLoad();
-      setStatus('Composite Live','ok');
-      updateLegend('REF');
-      startCd(300);
-    } catch(e) {
-      hideLoad();
-      setStatus('WMS error','err');
-      console.error('WMS failed:', e);
-    }
-  } else {
-    // Tile path for q2-hsr (no WMS available)
-    const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png?ts=${Math.floor(Date.now()/60000)}`;
-    radarLayer = L.tileLayer(tileUrl, {
-      opacity: curOp/100,
-      attribution: 'MRMS via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
-      maxZoom: 10, tileSize: 256, zIndex: 200,
-    }).addTo(map);
-    const now = new Date();
-    const pad = n => String(n).padStart(2,'0');
-    iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
-    hideLoad();
-    setStatus('Composite Live','ok');
-    updateLegend('REF');
-    startCd(300);
-  }
-}
-
-// ── SINGLE SITE MODE — NEXRAD L2 binary parser ────────────────────────
-const STA = {
-  KTLX:{lat:35.3331,lon:-97.2775}, KFWS:{lat:32.5728,lon:-97.3030},
-  KICT:{lat:37.6545,lon:-97.4430}, KINX:{lat:36.1750,lon:-95.5647},
-  KSRX:{lat:35.2904,lon:-94.3619}, KSHV:{lat:32.4508,lon:-93.8412},
-  KLZK:{lat:34.8365,lon:-92.2622}, KNQA:{lat:35.3447,lon:-89.8734},
-  KGWX:{lat:33.8968,lon:-88.3293}, KBMX:{lat:33.1722,lon:-86.7700},
-  KOHX:{lat:36.2472,lon:-86.5625}, KHTX:{lat:34.9306,lon:-86.0839},
-  KEWX:{lat:29.7039,lon:-98.0286}, KHGX:{lat:29.4719,lon:-95.0792},
-  KLCH:{lat:30.1253,lon:-93.2161},
-};
-const PRD_RANGE = {REF:460000, VEL:230000, ZDR:230000, CC:230000};
-
-async function findLatestScan(sta) {
-  const r = await fetch(`https://unidata-nexrad-level2-chunks.s3.amazonaws.com/?prefix=${sta}/&max-keys=500`);
-  const xml = await r.text();
-  const keys = [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map(m=>m[1]);
-  const scans = {};
-  for (const k of keys) {
-    const m = k.match(/\/(\d+)\//);
-    if (m) { const n=parseInt(m[1]); if(!scans[n])scans[n]=[]; scans[n].push(k); }
-  }
-  const latest = Math.max(...Object.keys(scans).map(Number));
-  return { scanNum: latest, chunks: scans[latest].sort() };
-}
-
-async function fetchChunks(chunks, limit) {
-  const toFetch = chunks.slice(0, Math.min(limit, chunks.length));
-  $('lsub').textContent = `0/${toFetch.length}`;
-  const bufs = [];
-  for (let i=0; i<toFetch.length; i++) {
-    const buf = await fetch('https://unidata-nexrad-level2-chunks.s3.amazonaws.com/'+toFetch[i]).then(r=>r.arrayBuffer());
-    bufs.push(buf);
-    $('lsub').textContent = `${i+1}/${toFetch.length}`;
-  }
-  return bufs;
-}
-
-function parseAllChunks(bufs, tilt, product) {
-  const elevs = new Map();
-  let totalMsg31 = 0;
-
-  for (const buf of bufs) {
-    const raw = new Uint8Array(buf);
-    const dv  = new DataView(buf);
-    let pos = 0;
-    // S-chunk: 24-byte AR2V file header
-    if (raw[0]===0x41&&raw[1]===0x52&&raw[2]===0x32&&raw[3]===0x56) pos = 24;
-
-    while (pos + 4 <= raw.byteLength) {
-      const sz = Math.abs(dv.getInt32(pos, false));
-      if (!sz || pos+4+sz > raw.byteLength) break;
-      let block;
-      try { block = window.Bzip2.decompress(raw.slice(pos+4, pos+4+sz)); }
-      catch(e) { pos+=4+sz; continue; }
-      pos += 4+sz;
-
-      const bv = new DataView(block.buffer, block.byteOffset, block.byteLength);
-      let r = 0;
-      while (r+28 <= block.byteLength) {
-        const sizeHW = bv.getUint16(r+12, false);
-        const msgType = block[r+15];
-        if (msgType === 31) {
-          totalMsg31++;
-          parseMsg31(block, bv, r+28, elevs);
-          r += 12 + sizeHW*2;
-        } else {
-          r += 2432;
-        }
-        if (sizeHW===0 && msgType!==31) break;
-      }
-    }
-  }
-
-  if (!elevs.size) throw new Error(`No Message 31 records (saw ${totalMsg31} total)`);
-
-  // Pick elevation
-  const elevKeys = [...elevs.keys()].sort((a,b)=>a-b);
-  const tKey = elevKeys[Math.min(tilt-1, elevKeys.length-1)];
-  const elev = elevs.get(tKey);
-
-  const mk = {REF:'ref',VEL:'vel',ZDR:'zdr',CC:'cc'}[product]||'ref';
-  const data = (elev[mk]?.some(g=>g&&g.length>0)) ? elev[mk] : elev.ref;
-
-  return {
-    azimuth:    new Float32Array(elev.azimuth),
-    data,
-    gate_size:  elev.gs || 250,
-    first_gate: elev.fg || 2125,
-  };
-}
-
-function parseMsg31(data, view, base, elevs) {
-  if (base+40 > data.byteLength) return;
-  try {
-    const az = view.getFloat32(base+12, false);
-    const en = data[base+22];
-    const nb = view.getUint16(base+30, false);
-    if (az<0||az>=360||en<1||en>25||nb<1||nb>10) return;
-    if (!elevs.has(en)) elevs.set(en,{azimuth:[],ref:[],vel:[],zdr:[],cc:[],fg:2125,gs:250});
-    const el = elevs.get(en);
-    el.azimuth.push(az);
-    const mo = {ref:null,vel:null,zdr:null,cc:null};
-    for (let i=0; i<Math.min(nb,9); i++) {
-      const ptr = view.getUint32(base+32+i*4, false);
-      if (!ptr) continue;
-      const bb = base+ptr;
-      if (bb+28>data.byteLength) continue;
-      if (data[bb]!==0x44) continue;
-      const name = String.fromCharCode(data[bb+1],data[bb+2],data[bb+3]).replace(/\0/g,'').trim();
-      const ng  = view.getUint16(bb+8,  false);
-      const fg  = view.getUint16(bb+10, false);
-      const gs  = view.getUint16(bb+12, false);
-      const ws  = data[bb+19];
-      const sc  = view.getFloat32(bb+20, false);
-      const off = view.getFloat32(bb+24, false);
-      if (ng<1||ng>3600||(ws!==8&&ws!==16)||sc===0) continue;
-      const ds = bb+28;
-      if (ds+ng*(ws===16?2:1)>data.byteLength) continue;
-      const dec = new Float32Array(ng);
-      for (let g=0;g<ng;g++) {
-        const rv = ws===16 ? view.getUint16(ds+g*2,false) : data[ds+g];
-        dec[g] = rv<2 ? NaN : (rv-off)/sc;
-      }
-      if (name==='REF'){mo.ref=dec;el.fg=fg;el.gs=gs;}
-      else if(name==='VEL') mo.vel=dec;
-      else if(name==='ZDR') mo.zdr=dec;
-      else if(name==='RHO'||name==='CC') mo.cc=dec;
-    }
-    for (const k of['ref','vel','zdr','cc']) el[k].push(mo[k]);
-  } catch(e){}
-}
-
-// ── Canvas renderer ───────────────────────────────────────────────────
-function renderToCanvas(azimuth, data, gateSize, firstGate, product, rangeM) {
-  const SZ=1200, cx=SZ/2, cy=SZ/2, sc=SZ/(2*rangeM);
-  const canvas=document.createElement('canvas'); canvas.width=SZ; canvas.height=SZ;
-  const ctx=canvas.getContext('2d');
-  const img=ctx.createImageData(SZ,SZ); const px=img.data;
-  const nR=azimuth.length; if(!nR) return canvas;
-  const bhw=(nR>500?.25:.5)*Math.PI/180;
-
-  for (let r=0;r<nR;r++){
-    const gates=data[r]; if(!gates||!gates.length) continue;
-    const az=azimuth[r]*Math.PI/180;
-    for (let g=0;g<gates.length;g++){
-      const v=gates[g]; if(isNaN(v)||v==null) continue;
-      const col=colorOf(v,product); if(!col) continue;
-      const rN=(firstGate+g*gateSize)*sc, rF=(firstGate+(g+1)*gateSize)*sc;
-      if(rN>SZ/2) break;
-      const as=Math.max(2,Math.round(rN*bhw*2)), rs=Math.max(1,Math.round(rF-rN));
-      for (let ai=0;ai<=as;ai++){
-        const a=az-bhw+ai*(2*bhw/as), sa=Math.sin(a), ca=Math.cos(a);
-        for (let ri=0;ri<=rs;ri++){
-          const rng=rN+ri, x=Math.round(cx+sa*rng), y=Math.round(cy-ca*rng);
-          if(x<0||x>=SZ||y<0||y>=SZ) continue;
-          const i=(y*SZ+x)*4;
-          px[i]=col[0]; px[i+1]=col[1]; px[i+2]=col[2]; px[i+3]=col[3];
-        }
-      }
-    }
-  }
-  ctx.putImageData(img,0,0); return canvas;
-}
-
-// ── Colors — 5 dBZ threshold (no ground clutter) ─────────────────────
-function colorOf(v,p){
-  if(v==null||isNaN(v)) return null;
-  if(p==='VEL') return vc(v);
-  if(p==='ZDR') return zc(v);
-  if(p==='CC')  return ccc(v);
-  return rc(v);
-}
-function rc(d){
-  if(d<5) return null;  // suppress clutter/noise
-  if(d<10) return[0,236,236,200];
-  if(d<20) return[1,159,244,210];
-  if(d<30) return[3,0,244,220];
-  if(d<40) return[2,253,2,225];
-  if(d<45) return[1,197,1,230];
-  if(d<50) return[255,255,0,235];
-  if(d<55) return[231,192,0,240];
-  if(d<60) return[255,144,0,245];
-  if(d<65) return[255,0,0,250];
-  if(d<70) return[214,0,0,255];
-  return[255,0,255,255];
-}
-function vc(v){if(v<-27)return[255,0,255,240];if(v<-20)return[255,0,0,235];if(v<-10)return[255,170,0,225];if(v<-2)return[0,255,0,210];if(v<2)return null;if(v<10)return[0,170,255,210];if(v<20)return[0,0,255,225];if(v<27)return[170,0,255,235];return[255,0,255,240];}
-function zc(z){if(z<0)return[102,0,204,220];if(z<.5)return[0,0,255,225];if(z<1)return[0,170,255,225];if(z<2)return[0,255,0,230];if(z<3)return[255,255,0,235];if(z<4)return[255,136,0,240];return[255,0,0,245];}
-function ccc(c){if(c<.7)return[255,0,255,220];if(c<.8)return[255,0,0,225];if(c<.9)return[255,170,0,230];if(c<.95)return[255,255,0,235];if(c<.97)return[0,255,0,240];return[0,255,255,245];}
-
-// ── Legend ────────────────────────────────────────────────────────────
-const LEGS={
-  REF:{t:'REF (dBZ)',e:[['#00ecec','5–10'],['#019ff4','10–20'],['#0300f4','20–30'],['#02fd02','30–40'],['#01c501','40–45'],['#ffff00','45–50'],['#ff9000','50–55'],['#ff0000','55–60'],['#d60000','60–65'],['#ff00ff','>65']]},
-  VEL:{t:'VEL (m/s)',e:[['#ff00ff','<-27'],['#ff0000','-20↔-27'],['#ffaa00','-10↔-20'],['#00ff00','-2↔-10'],['#00aaff','+2↔+10'],['#0000ff','+10↔+20'],['#aa00ff','+20↔+27'],['#ff00ff','>+27']]},
-  ZDR:{t:'ZDR (dB)',e:[['#6600cc','<0'],['#0000ff','0–0.5'],['#00aaff','0.5–1'],['#00ff00','1–2'],['#ffff00','2–3'],['#ff8800','3–4'],['#ff0000','>4']]},
-  CC: {t:'CC (ρhv)',e:[['#ff00ff','<0.70'],['#ff0000','0.70–0.80'],['#ffaa00','0.80–0.90'],['#ffff00','0.90–0.95'],['#00ff00','0.95–0.97'],['#00ffff','>0.97']]},
-};
-function updateLegend(prd){
-  const d=LEGS[prd]||LEGS.REF; $('lt').textContent=d.t;
-  $('lb').innerHTML=d.e.map(([c,l])=>`<div class="lr"><div class="ls" style="background:${c}"></div><span class="ll">${l}</span></div>`).join('');
-}
-
-// ── Single site load ──────────────────────────────────────────────────
-async function loadSingleSite() {
-  const sta = $('ss').value;
-  const prd = $('sp').value;
-  const tlt = +$('st').value;
-  iSrc.textContent = sta+' L2';
-
-  showLoad('Scanning chunks…', sta);
-  setStatus('Scanning…','warn');
-  const {scanNum, chunks} = await findLatestScan(sta);
-
-  const tm = chunks[0]?.match(/(\d{8})-(\d{6})/);
-  if(tm){const[,d,t]=tm;iTim.textContent=`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)} ${t.slice(0,2)}:${t.slice(2,4)}Z`;}
-
-  const limit = tlt===1 ? 25 : Math.min(15+tlt*10, 60);
-  showLoad('Downloading chunks…', `0/${Math.min(limit,chunks.length)}`);
-  setStatus('Downloading…','warn');
-  const bufs = await fetchChunks(chunks, limit);
-
-  showLoad('Parsing…', `${bufs.length} chunks`);
-  setStatus('Parsing…','warn');
-  await new Promise(r=>setTimeout(r,0));
-
-  const {azimuth, data, gate_size, first_gate} = parseAllChunks(bufs, tlt, prd);
-  iRad.textContent = azimuth.length;
-  if (!azimuth.length) throw new Error('0 radials decoded');
-
-  showLoad('Rendering…', azimuth.length+' radials');
-  await new Promise(r=>setTimeout(r,0));
-
-  const canvas = renderToCanvas(azimuth, data, gate_size, first_gate, prd, PRD_RANGE[prd]||460000);
-  const s = STA[sta], rng = PRD_RANGE[prd]||460000;
-  const ld=(rng/1000)/111.32, lnd=(rng/1000)/(111.32*Math.cos(s.lat*Math.PI/180));
-  const bounds=[[s.lat-ld,s.lon-lnd],[s.lat+ld,s.lon+lnd]];
-
-  clearOverlays();
-  siteOverlay = L.imageOverlay(canvas.toDataURL('image/png'), bounds, {
-    opacity: curOp/100, interactive:false, zIndex:200
-  }).addTo(map);
-
-  map.fitBounds(bounds, {padding:[20,20]});
-  hideLoad(); setStatus('L2 Live','ok');
-  updateLegend(prd);
-  startCd(120);
-}
-
-// ── Main load dispatcher ──────────────────────────────────────────────
-async function load() {
-  if (busy) return;
-  busy = true;
-  clearInterval(cdTimer);
-  $('err').classList.remove('v');
-  try {
-    if (curMode === 'COMP') await loadComposite();
-    else await loadSingleSite();
-  } catch(e) {
-    console.error('[RADAR]', e);
-    showErr(e.message || String(e));
-    setStatus('Error','err');
-    startCd(60);
-  } finally {
-    busy = false;
-  }
-}
-
-// ── Init ──────────────────────────────────────────────────────────────
-updateLegend('REF');
-load();
+window.addEventListener('load',()=>{
+  iSrc=$('sSrc').querySelector('span');iTime=$('sTime').querySelector('span');
+  iRad=$('sRad').querySelector('span');iSts=$('sSts').querySelector('span');iCd=$('sCd').querySelector('span');
+  map=L.map('map',{center:[37,-96],zoom:5,zoomControl:false,attributionControl:true});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'\u00a9 CartoDB',subdomains:'abcd',maxZoom:18}).addTo(map);
+  map.on('move zoom moveend zoomend',renderGL);
+  if(!initGL())return;
+  colormapTex=mkCmapTex(getLut('refl'));
+  buildPanel();drawLegend('refl');
+  $('selSite').onchange=$('selPrd').onchange=$('selTilt').onchange=()=>{if(mode==='SITE')loadSingleSite();};
+  loadComposite();
+});
 </script>
 </body>
 </html>
