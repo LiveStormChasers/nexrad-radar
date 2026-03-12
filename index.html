@@ -2,596 +2,134 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NEXRAD Live Radar</title>
 <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="bzip2.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Barlow+Condensed:wght@400;600;700&display=swap');
-:root{--bg:#0a0c0f;--panel:#111418;--panel2:#161b22;--border:#1e2329;--bb:#2d3540;--text:#c8d4e0;--dim:#5a6a7a;--accent:#00d4ff;--green:#39ff14;--warn:#ffcc00;--danger:#ff2d2d;--mono:'JetBrains Mono',monospace;--sans:'Barlow Condensed',sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-#topbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
-.logo{font-family:var(--sans);font-size:16px;font-weight:700;letter-spacing:.1em;color:var(--accent);text-transform:uppercase;white-space:nowrap}
-.cg{display:flex;align-items:center;gap:6px}
-.cl{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
-select{background:var(--bg);border:1px solid var(--bb);color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 6px;border-radius:3px;cursor:pointer;outline:none;appearance:none}
-select:hover{border-color:var(--accent)}
-input[type=range]{width:80px;cursor:pointer;accent-color:var(--accent)}
-button{background:var(--panel2);border:1px solid var(--bb);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:3px;cursor:pointer;white-space:nowrap}
-button:hover{border-color:var(--accent);color:var(--accent)}
-button.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
-#mapwrap{flex:1;position:relative;overflow:hidden}
-#map{width:100%;height:100%}
-#statusbar{display:flex;gap:16px;padding:4px 14px;background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;font-size:10px;flex-wrap:wrap}
-.sv{color:var(--dim)}.sv span{color:var(--text)}.sv.ok span{color:var(--green)}.sv.warn span{color:var(--warn)}.sv.err span{color:var(--danger)}
-#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,12,15,.92);border:1px solid var(--border);border-radius:6px;padding:20px 32px;text-align:center;z-index:1000;backdrop-filter:blur(4px)}
-#loading.hidden{display:none}
-#lmsg{font-size:14px;color:var(--accent);margin-bottom:4px}
-#lsub{font-size:10px;color:var(--dim)}
-#err{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#2a0a0a;border:1px solid var(--danger);color:var(--danger);padding:8px 16px;border-radius:4px;z-index:1001;opacity:0;transition:opacity .3s;pointer-events:none}
-#err.v{opacity:1}
-#prodPanel{position:absolute;bottom:44px;left:10px;z-index:500;background:rgba(10,12,15,.95);border:1px solid var(--border);border-radius:8px;width:284px;max-height:68vh;display:flex;flex-direction:column;backdrop-filter:blur(10px);box-shadow:0 4px 24px rgba(0,0,0,.6)}
-#prodPanel.hidden{display:none}
-#ppHeader{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
-#ppMeta{flex:1;min-width:0}
-#ppProdName{font-family:var(--sans);font-size:15px;font-weight:700;color:#fff;letter-spacing:.03em}
-#ppTime{font-size:9px;color:var(--accent);margin-top:2px;letter-spacing:.04em}
-#ppClose{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0}
-#ppClose:hover{color:var(--text)}
-#ppScroll{overflow-y:auto;flex:1;padding:4px 0}
-#ppScroll::-webkit-scrollbar{width:4px}
-#ppScroll::-webkit-scrollbar-thumb{background:var(--bb);border-radius:2px}
-.pp-cat{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:10px 14px 4px;font-family:var(--sans);font-weight:700}
-.pp-item{display:flex;align-items:center;gap:10px;padding:6px 14px;cursor:pointer;border-left:2px solid transparent;transition:background .1s}
-.pp-item:hover{background:rgba(255,255,255,.05)}
-.pp-item.active{background:rgba(0,212,255,.1);border-left-color:var(--accent)}
-.pp-swatch{width:32px;height:18px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
-.pp-info{flex:1;min-width:0}
-.pp-name{font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pp-unit{font-size:9px;color:var(--dim);margin-top:1px}
-#animBar{position:absolute;bottom:0;left:0;right:0;z-index:500;background:rgba(10,12,15,.92);border-top:1px solid var(--border);padding:5px 12px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(4px)}
-#animBar.hidden{display:none}
-#animTime{font-size:10px;color:var(--accent);min-width:140px;white-space:nowrap;letter-spacing:.04em}
-#animSlider{flex:1;accent-color:var(--accent)}
-.abt{background:none;border:1px solid var(--bb);color:var(--dim);padding:2px 9px;font-size:12px;border-radius:3px;cursor:pointer;line-height:1.4;font-family:var(--mono)}
-.abt:hover{color:var(--text);border-color:var(--accent)}
-.abt.on{color:var(--accent);border-color:var(--accent)}
-#liveBtn{font-size:9px;padding:2px 6px;letter-spacing:.06em;color:var(--green);border-color:var(--green)}
-#liveBtn.on{background:var(--green);color:#000;border-color:var(--green)}
-#legend{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:500;background:rgba(10,12,15,.85);border:1px solid var(--border);border-radius:5px;padding:8px 8px 8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px}
-#legend.hidden{display:none}
-#legCanvas{width:16px;height:200px;display:block;border-radius:2px}
-.leg-top,.leg-bot{font-size:9px;color:var(--dim);white-space:nowrap}
+body{background:#0a0c0f;color:#c8d4e0;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#bar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#111418;border-bottom:1px solid #1e2329;flex-shrink:0;flex-wrap:wrap}
+.logo{font-size:15px;font-weight:700;color:#00d4ff;letter-spacing:.1em;white-space:nowrap}
+select,button{background:#0a0c0f;border:1px solid #2d3540;color:#c8d4e0;font-size:11px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:inherit}
+select:hover,button:hover{border-color:#00d4ff}
+button.active{background:#00d4ff;color:#000;border-color:#00d4ff;font-weight:700}
+label{color:#5a6a7a;font-size:10px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+#map{flex:1}
+#status{padding:3px 12px;background:#111418;border-top:1px solid #1e2329;font-size:10px;color:#5a6a7a;flex-shrink:0;display:flex;gap:16px}
+#status span{color:#c8d4e0}
 .leaflet-control-zoom{display:none}
 </style>
 </head>
 <body>
-<div id="topbar">
-  <div class="logo">&#x26A1; NEXRAD</div>
-  <div class="cg">
-    <button id="btnComp" class="active" onclick="setMode('COMP')">&#9646; Composite</button>
-    <button id="btnSite" onclick="setMode('SITE')">&#9678; Single Site</button>
-  </div>
-  <div class="cg" id="ctrlComp">
-    <button onclick="togglePanel()">&#8862; Products</button>
-    <span id="prodLabel" style="font-size:11px;color:var(--accent)">Seamless HSR</span>
-  </div>
-  <div class="cg" id="ctrlSite" style="display:none">
-    <div class="cl">Station</div>
-    <select id="selSite">
-      <option value="KTLX">KTLX &ndash; Oklahoma City</option>
-      <option value="KFWS">KFWS &ndash; Dallas/Ft Worth</option>
-      <option value="KICT">KICT &ndash; Wichita</option>
-      <option value="KINX">KINX &ndash; Tulsa</option>
-      <option value="KSRX">KSRX &ndash; Ft Smith</option>
-      <option value="KSHV">KSHV &ndash; Shreveport</option>
-      <option value="KLZK">KLZK &ndash; Little Rock</option>
-      <option value="KNQA">KNQA &ndash; Memphis</option>
-      <option value="KGWX">KGWX &ndash; Columbus MS</option>
-      <option value="KBMX">KBMX &ndash; Birmingham</option>
-      <option value="KOHX">KOHX &ndash; Nashville</option>
-      <option value="KHTX">KHTX &ndash; Huntsville</option>
-      <option value="KEWX">KEWX &ndash; Austin/S Antonio</option>
-      <option value="KHGX">KHGX &ndash; Houston</option>
-      <option value="KLCH">KLCH &ndash; Lake Charles</option>
-    </select>
-    <div class="cl">Product</div>
-    <select id="selPrd"><option>REF</option><option>VEL</option><option>ZDR</option><option>CC</option></select>
-    <div class="cl">Tilt</div>
-    <select id="selTilt"><option>1</option><option>2</option><option>3</option><option>4</option></select>
-  </div>
-  <div class="cg"><div class="cl">Opacity</div><input type="range" id="opSlider" min="10" max="100" value="90" oninput="setOpacity(this.value)"></div>
-  <button onclick="load()">&#8634; Refresh</button>
+<div id="bar">
+  <div class="logo">⚡ NEXRAD</div>
+  <label>Station</label>
+  <select id="site" onchange="loadSite()"></select>
+  <label>Product</label>
+  <select id="product" onchange="loadSite()">
+    <option value="sr_bref">Reflectivity</option>
+    <option value="sr_vel">Velocity</option>
+  </select>
+  <button onclick="loadSite()">⟳ Refresh</button>
+  <div id="stTime" style="color:#00d4ff;font-size:10px;margin-left:8px"></div>
 </div>
-<div id="mapwrap">
-  <div id="map"></div>
-  <div id="loading"><div id="lmsg">Initializing&hellip;</div><div id="lsub"></div></div>
-  <div id="err"></div>
-  <div id="prodPanel" class="hidden">
-    <div id="ppHeader">
-      <div id="ppMeta"><div id="ppProdName">MRMS &bull; Reflectivity</div><div id="ppTime">Frame: &mdash; &bull; Live</div></div>
-      <button id="ppClose" onclick="togglePanel()">&#10005;</button>
-    </div>
-    <div id="ppScroll"></div>
-  </div>
-  <div id="animBar" class="hidden">
-    <button class="abt" onclick="animStep(-1)">&#9664;</button>
-    <button class="abt" id="btnPlay" onclick="animToggle()">&#9654;</button>
-    <button class="abt" onclick="animStep(1)">&#9654;|</button>
-    <input type="range" id="animSlider" min="0" max="0" value="0" oninput="animSeek(+this.value)">
-    <span id="animTime">&mdash;</span>
-    <button class="abt" id="liveBtn" onclick="animGoLive()">&#9679; LIVE</button>
-  </div>
-  <div id="legend" class="hidden">
-    <div class="leg-top" id="legMax">&mdash;</div>
-    <canvas id="legCanvas" width="16" height="200"></canvas>
-    <div class="leg-bot" id="legMin">&mdash;</div>
-  </div>
+<div id="map"></div>
+<div id="status">
+  <div>Source <span>NWS OpenGeo WMS</span></div>
+  <div id="stStatus">Status <span style="color:#39ff14">Ready</span></div>
+  <div id="stNext">Next <span>—</span></div>
 </div>
-<div id="statusbar">
-  <div class="sv" id="sSrc">Source <span>&mdash;</span></div>
-  <div class="sv" id="sTime">Time <span>&mdash;</span></div>
-  <div class="sv" id="sRad" style="display:none">Radials <span>&mdash;</span></div>
-  <div class="sv ok" id="sSts">Status <span>Ready</span></div>
-  <div class="sv" id="sCd">Next <span>&mdash;</span></div>
-</div>
+
 <script>
-'use strict';
-const $=id=>document.getElementById(id);
-let map, compOverlay=null, siteOverlay=null, cdInt=null;
-let iSrc,iTime,iRad,iSts,iCd;
-let mode='COMP', opacity=0.90;
-const MRMS_COLS=7000, MRMS_ROWS=3500;
-// MRMS grid bounds: lon -129.995 to -60.005, lat 20.005 to 54.995
-const MRMS_BOUNDS = [[20.005, -129.995], [54.995, -60.005]];
-const PROXY='/wise/USA/MRMS/CONUS';
-let animFrames=[], animIdx=0, animPlaying=false, animTimer=null;
-let curProduct='SeamlessHSR', curColType='refl';
-let decodeWorker=null;
-const pendingDecode=new Map();
-let decodeId=0;
+// All 143 NWS NEXRAD stations with sr_bref
+const STATIONS = ["KABR","KABX","KAKQ","KAMA","KAMX","KAPX","KARX","KATX","KBBX","KBGM","KBHX","KBIS","KBLX","KBMX","KBOX","KBRO","KBUF","KBYX","KCAE","KCBW","KCBX","KCCX","KCLE","KCLX","KCRP","KCXX","KCYS","KDAX","KDDC","KDFX","KDGX","KDIX","KDLH","KDMX","KDOX","KDTX","KDVN","KDYX","KEAX","KEMX","KENX","KEOX","KEPZ","KESX","KEVX","KEWX","KEYX","KFCX","KFDR","KFDX","KFFC","KFSD","KFSX","KFTG","KFWS","KGGW","KGJX","KGLD","KGRB","KGRK","KGRR","KGSP","KGWX","KGYX","KHDC","KHDX","KHGX","KHNX","KHPX","KHTX","KICT","KICX","KILN","KILX","KIND","KINX","KIWA","KIWX","KJAX","KJGX","KJKL","KLBB","KLCH","KLGX","KLNX","KLOT","KLRX","KLSX","KLTX","KLVX","KLWX","KLZK","KMAF","KMAX","KMBX","KMHX","KMKX","KMLB","KMOB","KMPX","KMQT","KMRX","KMSX","KMTX","KMUX","KMVX","KMXX","KNKX","KNQA","KOAX","KOHX","KOKX","KOTX","KPAH","KPBZ","KPDT","KPOE","KPUX","KRAX","KRGX","KRIW","KRLX","KRTX","KSFX","KSGF","KSHV","KSJT","KSOX","KSRX","KTBW","KTFX","KTLX","KTWX","KTYX","KUDX","KUEX","KVAX","KVBX","KVNX","KVTX","KVWX","KYUX"];
 
-// ── Product Definitions ──────────────────────────────────────────────────────
-const PRODUCT_CATS=[
-  {cat:'Reflectivity',items:[
-    {id:'SeamlessHSR',name:'Reflectivity',sub:'Seamless HSR',unit:'dBZ',colType:'refl'}]},
-  {cat:'Echo Tops',items:[
-    {id:'EchoTop_18',name:'Echo Top 18 dBZ',unit:'km',colType:'et'},
-    {id:'EchoTop_30',name:'Echo Top 30 dBZ',unit:'km',colType:'et'},
-    {id:'EchoTop_50',name:'Echo Top 50 dBZ',unit:'km',colType:'et'},
-    {id:'EchoTop_60',name:'Echo Top 60 dBZ',unit:'km',colType:'et'}]},
-  {cat:'Hail / VIL',items:[
-    {id:'VIL',name:'Vertically Integrated Liquid',unit:'kg/m\u00b2',colType:'vil'},
-    {id:'VIL_Density',name:'VIL Density',unit:'g/m\u00b3',colType:'vil'},
-    {id:'MESH',name:'MESH Hail Size',unit:'mm',colType:'mesh'},
-    {id:'SHI',name:'Severe Hail Index',unit:'',colType:'shi'}]},
-  {cat:'Precipitation',items:[
-    {id:'PrecipRate',name:'Precip Rate',unit:'mm/hr',colType:'qpe'},
-    {id:'PrecipFlag',name:'Precip Type',unit:'',colType:'ptype'}]},
-  {cat:'QPE \u2014 Radar Only',items:[
-    {id:'RadarOnly_QPE_01H',name:'Radar QPE 1-hour',unit:'mm',colType:'qpe'},
-    {id:'RadarOnly_QPE_03H',name:'Radar QPE 3-hour',unit:'mm',colType:'qpe'},
-    {id:'RadarOnly_QPE_06H',name:'Radar QPE 6-hour',unit:'mm',colType:'qpe'},
-    {id:'RadarOnly_QPE_24H',name:'Radar QPE 24-hour',unit:'mm',colType:'qpe'},
-    {id:'RadarOnly_QPE_48H',name:'Radar QPE 48-hour',unit:'mm',colType:'qpe'},
-    {id:'RadarOnly_QPE_72H',name:'Radar QPE 72-hour',unit:'mm',colType:'qpe'}]},
-  {cat:'QPE \u2014 Multi-Sensor Pass 1',items:[
-    {id:'MultiSensor_QPE_01H_Pass1',name:'MS QPE 1-hour P1',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_03H_Pass1',name:'MS QPE 3-hour P1',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_06H_Pass1',name:'MS QPE 6-hour P1',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_24H_Pass1',name:'MS QPE 24-hour P1',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_48H_Pass1',name:'MS QPE 48-hour P1',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_72H_Pass1',name:'MS QPE 72-hour P1',unit:'mm',colType:'qpe'}]},
-  {cat:'QPE \u2014 Multi-Sensor Pass 2',items:[
-    {id:'MultiSensor_QPE_01H_Pass2',name:'MS QPE 1-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_03H_Pass2',name:'MS QPE 3-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_06H_Pass2',name:'MS QPE 6-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_12H_Pass2',name:'MS QPE 12-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_24H_Pass2',name:'MS QPE 24-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_48H_Pass2',name:'MS QPE 48-hour P2',unit:'mm',colType:'qpe'},
-    {id:'MultiSensor_QPE_72H_Pass2',name:'MS QPE 72-hour P2',unit:'mm',colType:'qpe'}]},
-  {cat:'Rotation',items:[
-    {id:'RotationTrack30min',name:'Rotation Track 30-min',unit:'0.001/s',colType:'rot'},
-    {id:'RotationTrack60min',name:'Rotation Track 60-min',unit:'0.001/s',colType:'rot'}]}
-];
-function getProdInfo(id){for(const c of PRODUCT_CATS)for(const p of c.items)if(p.id===id)return p;return null;}
+// Station coordinates for map centering
+const COORDS = {
+  KMOB:[30.68,-88.24],KBMX:[33.17,-86.77],KHTX:[34.93,-86.08],KGWX:[33.9,-88.33],
+  KNQA:[35.35,-89.87],KOHX:[36.25,-86.56],KLZK:[34.84,-92.26],KSHV:[32.45,-93.84],
+  KFWS:[32.57,-97.3],KEWX:[29.7,-98.03],KHGX:[29.47,-95.08],KLCH:[30.12,-93.22],
+  KCRP:[27.78,-97.51],KTLX:[35.33,-97.28],KINX:[36.18,-95.56],KICT:[37.65,-97.44],
+  KSRX:[35.29,-94.36],KDGX:[32.28,-89.98],KTBW:[27.71,-82.4],KJAX:[30.48,-81.7],
+  KMLB:[28.11,-80.65],KAMX:[25.61,-80.41],KBYX:[24.6,-81.7],KCLX:[32.66,-81.04],
+  KLTX:[33.99,-78.43],KAKQ:[36.98,-77.01],KMHX:[34.78,-76.88],KGYX:[43.89,-70.26],
+  KBOX:[41.96,-71.14],KDTX:[42.7,-83.47],KGRR:[42.89,-85.54],KILX:[40.15,-89.34],
+  KDVN:[41.61,-90.58],KMPX:[44.85,-93.56],KDLH:[46.84,-92.21],KMKX:[42.97,-88.55],
+  KGRB:[44.5,-88.11],KAPX:[44.91,-84.72],KOTX:[47.68,-117.63],KATX:[48.19,-122.49],
+  KRTX:[45.71,-122.97],KPDT:[45.69,-118.85],KLGX:[47.12,-124.11],KSFX:[43.1,-112.69],
+  KCBX:[43.49,-116.23],KMAX:[42.08,-122.72],KBBX:[39.49,-121.63],KBHX:[40.5,-124.29],
+  KDAX:[38.5,-121.68],KMUX:[37.15,-121.9],KVBX:[34.84,-120.4],KSOX:[33.82,-117.64],
+  KVTX:[34.41,-119.18],KEYX:[35.1,-117.56],KNKX:[32.92,-117.04],KEMX:[31.89,-110.63],
+  KEPZ:[31.87,-106.7],KHDX:[33.08,-106.12],KDFX:[29.27,-100.28],KFDR:[34.36,-98.97],
+  KINX:[36.18,-95.56],KSGF:[37.23,-93.4],KLSX:[38.7,-90.68],KIND:[39.7,-86.28],
+  KIWX:[41.36,-85.7],KPBZ:[40.53,-80.22],KPAH:[37.07,-88.77],KFFC:[33.36,-84.57],
+  KEOX:[31.46,-85.46],KVAX:[30.89,-83.0],KJGX:[32.68,-83.35],KGSP:[34.88,-82.22],
+  KFCX:[37.02,-80.27],KRLX:[38.31,-81.72],KCKB:[39.3,-80.35]
+};
 
-// ── Colormap LUTs ───────────────────────────────────────────────────────────
-function buildLut(stops){
-  const lut=new Uint8Array(256*4);
-  for(let v=0;v<256;v++){
-    let lo=stops[0],hi=stops[stops.length-1];
-    for(let i=0;i<stops.length;i++){
-      if(stops[i][0]<=v)lo=stops[i];
-      if(stops[i][0]>=v&&stops[i][0]<=hi[0])hi=stops[i];
-    }
-    let r,g,b,a;
-    if(lo[0]===hi[0]){[,r,g,b,a]=lo;}
-    else{const t=(v-lo[0])/(hi[0]-lo[0]);r=Math.round(lo[1]+t*(hi[1]-lo[1]));g=Math.round(lo[2]+t*(hi[2]-lo[2]));b=Math.round(lo[3]+t*(hi[3]-lo[3]));a=Math.round(lo[4]+t*(hi[4]-lo[4]));}
-    lut[v*4]=r;lut[v*4+1]=g;lut[v*4+2]=b;lut[v*4+3]=a;
-  }
-  return lut;
-}
-const COLORMAPS={};
-// Reflectivity: val=0 & 255 = no data (transparent), val 74=5dBZ start
-COLORMAPS.refl=buildLut([
-  [0,0,0,0,0],[73,0,0,0,0],
-  [74,4,233,231,200],[84,1,159,244,210],[94,3,0,244,220],
-  [104,2,253,2,230],[114,1,197,1,230],[124,0,142,0,230],
-  [134,253,248,2,240],[144,229,188,0,240],[154,253,149,0,245],
-  [164,253,0,0,255],[174,212,0,0,255],[184,188,0,0,255],
-  [194,248,0,253,255],[204,152,84,198,255],[214,255,255,255,255],[254,255,255,255,255]]);
-COLORMAPS.et=buildLut([
-  [0,0,0,0,0],[1,0,30,180,220],[15,0,100,255,220],[30,0,210,255,220],
-  [50,0,230,50,220],[70,180,255,0,230],[90,255,255,0,235],
-  [110,255,180,0,240],[130,255,80,0,250],[150,255,0,0,255],
-  [180,255,0,200,255],[210,255,255,255,255],[254,255,255,255,255]]);
-COLORMAPS.qpe=buildLut([
-  [0,0,0,0,0],[1,180,250,255,200],[20,0,200,50,220],[50,0,230,0,230],
-  [80,200,255,0,235],[110,255,255,0,240],[140,255,170,0,245],
-  [170,255,80,0,250],[200,255,0,0,255],[225,200,0,180,255],[254,255,255,255,255]]);
-COLORMAPS.vil=buildLut([
-  [0,0,0,0,0],[1,0,100,255,200],[10,0,230,80,210],[20,0,230,0,220],
-  [40,230,255,0,230],[60,255,180,0,240],[80,255,60,0,250],
-  [100,255,0,0,255],[120,255,0,200,255],[160,255,255,255,255],[254,255,255,255,255]]);
-COLORMAPS.mesh=buildLut([
-  [0,0,0,0,0],[1,0,230,230,200],[10,0,230,80,210],[24,255,255,0,230],
-  [36,255,170,0,240],[50,255,80,0,250],[72,255,0,0,255],
-  [100,200,0,255,255],[130,255,255,255,255],[254,255,255,255,255]]);
-COLORMAPS.shi=buildLut([
-  [0,0,0,0,0],[1,0,200,255,200],[40,0,230,50,210],
-  [80,255,255,0,230],[120,255,150,0,240],[160,255,0,0,255],
-  [200,255,0,255,255],[254,255,255,255,255]]);
-COLORMAPS.rot=buildLut([
-  [0,0,0,0,0],[200,0,0,0,0],[210,50,50,200,180],[220,200,50,200,200],
-  [230,255,0,200,230],[240,255,50,0,245],[250,255,255,0,255],[254,255,255,255,255]]);
-COLORMAPS.ptype=buildLut([
-  [0,0,0,0,0],[1,0,200,255,220],[2,0,80,200,220],[3,200,230,255,230],
-  [9,255,200,0,230],[10,0,230,0,220],[90,255,80,0,240],[96,200,0,200,230],
-  [100,255,255,255,220],[254,128,128,128,180]]);
-function getLut(t){return COLORMAPS[t]||COLORMAPS.refl;}
-function getLegInfo(t){
-  const m={refl:{max:'75 dBZ',min:'5 dBZ'},et:{max:'21+ km',min:'0.1 km'},
-    qpe:{max:'Extreme',min:'Trace'},vil:{max:'80+ kg/m\u00b2',min:'1 kg/m\u00b2'},
-    mesh:{max:'65+ mm',min:'0.5 mm'},shi:{max:'High',min:'Low'},
-    rot:{max:'Extreme',min:'Weak'},ptype:{max:'Type',min:'None'}};
-  return m[t]||{max:'\u2014',min:'\u2014'};
-}
+let map, wmsLayer, cdTimer, cdVal;
 
-// ── Decode Worker ───────────────────────────────────────────────────────────
-const WSRC=`self.onmessage=function(e){
-  const{id,buffer,offset}=e.data;
-  const b=new Uint8Array(buffer,offset);
-  const T=3500*7000;
-  const out=new Uint8Array(T);
-  let i=0,p=0;
-  while(i+1<b.length&&p<T){
-    const cnt=b[i++],val=b[i++];
-    const end=Math.min(p+cnt,T);
-    out.fill(val,p,end);
-    p=end;
-  }
-  self.postMessage({id,data:out},[out.buffer]);
-};`;
-function initWorker(){
-  const blob=new Blob([WSRC],{type:'application/javascript'});
-  decodeWorker=new Worker(URL.createObjectURL(blob));
-  decodeWorker.onmessage=e=>{const{id,data}=e.data;const cb=pendingDecode.get(id);if(cb){pendingDecode.delete(id);cb(data);}};
-}
-async function decodeWise(ab){
-  const bytes=new Uint8Array(ab);
-  // Find JSON block start
-  let js=-1;
-  for(let i=0;i<500;i++)if(bytes[i]===0x7B){js=i;break;}
-  // Find JSON block end (brace counting)
-  let d=0,je=-1;
-  for(let i=js;i<Math.min(bytes.length,50000);i++){
-    if(bytes[i]===0x7B)d++;
-    else if(bytes[i]===0x7D){d--;if(d===0){je=i;break;}}
-  }
-  const off=je+1;
-  if(!decodeWorker)initWorker();
-  return new Promise(res=>{
-    const id=++decodeId;
-    pendingDecode.set(id,res);
-    decodeWorker.postMessage({id,buffer:ab,offset:off},[ab]);
+window.onload = () => {
+  map = L.map('map', {center:[33,-87], zoom:7, zoomControl:false});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {subdomains:'abcd',maxZoom:19,attribution:'© CartoDB'}).addTo(map);
+
+  const sel = document.getElementById('site');
+  STATIONS.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    if (s === 'KMOB') o.selected = true;
+    sel.appendChild(o);
   });
-}
 
-// ── Composite Renderer (2D Canvas → Leaflet imageOverlay) ───────────────────
-// This is simple and correct: decode → colorize → overlay on map bounds
-function dataToCanvas(data, lut) {
-  // Clutter removal via vertical erosion: MRMS ground clutter appears as 1-4 row tall
-  // horizontal bands. Real precipitation spans 50+ rows. We remove any pixel not part
-  // of a vertical run of ≥5 consecutive above-threshold raw pixels in its column.
-  // Then box-filter downsample to 1400×700 for clean rendering.
-  const BSZ = 5;
-  const OUT_W = MRMS_COLS / BSZ;  // 1400
-  const OUT_H = MRMS_ROWS / BSZ;  // 700
-  const DBZ_THRESH = 74;          // val=74 → 5 dBZ
-  const MIN_VERT = 5;             // minimum vertical run length in raw pixels
+  loadSite();
+};
 
-  // Pass 1: column-by-column vertical erosion on raw 7000×3500
-  const survived = new Uint8Array(MRMS_COLS * MRMS_ROWS);
-  for (let x = 0; x < MRMS_COLS; x++) {
-    let y = 0;
-    while (y < MRMS_ROWS) {
-      const v = data[y * MRMS_COLS + x];
-      if (v >= DBZ_THRESH && v < 255) {
-        const runStart = y;
-        while (y < MRMS_ROWS) {
-          const vv = data[y * MRMS_COLS + x];
-          if (vv >= DBZ_THRESH && vv < 255) y++;
-          else break;
-        }
-        if (y - runStart >= MIN_VERT) {
-          for (let ry = runStart; ry < y; ry++) survived[ry * MRMS_COLS + x] = 1;
-        }
-      } else { y++; }
-    }
-  }
+function loadSite() {
+  clearInterval(cdTimer);
+  const site = document.getElementById('site').value.toLowerCase();
+  const product = document.getElementById('product').value;
+  const layer = `${site}:${site}_${product}`;
 
-  // Pass 2: box-filter downsample using only survived pixels
-  const canvas = document.createElement('canvas');
-  canvas.width = OUT_W; canvas.height = OUT_H;
-  const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(OUT_W, OUT_H);
-  const px = img.data;
-  for (let oy = 0; oy < OUT_H; oy++) {
-    for (let ox = 0; ox < OUT_W; ox++) {
-      let sumR=0, sumG=0, sumB=0, n=0;
-      const sx0=ox*BSZ, sy0=oy*BSZ;
-      for (let dy=0; dy<BSZ; dy++) {
-        for (let dx=0; dx<BSZ; dx++) {
-          const ri=(sy0+dy)*MRMS_COLS+(sx0+dx);
-          if (survived[ri]) {
-            const v=data[ri];
-            sumR+=lut[v*4]; sumG+=lut[v*4+1]; sumB+=lut[v*4+2]; n++;
-          }
-        }
-      }
-      if (n > 0) {
-        const oi=(oy*OUT_W+ox)*4;
-        px[oi]=sumR/n; px[oi+1]=sumG/n; px[oi+2]=sumB/n;
-        px[oi+3]=Math.min(255, Math.round(n/(BSZ*BSZ)*280));
-      }
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return canvas;
-}
+  document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ffcc00">Loading…</span>';
 
-// ── Data Loading ─────────────────────────────────────────────────────────────
-async function loadComposite(){
-  clearInterval(cdInt); animStop();
-  setStatus('Loading\u2026','warn');
-  showLoad(`Loading ${getProdInfo(curProduct)?.name||curProduct}\u2026`);
-  iSrc.textContent='MRMS/CONUS';
-  try{
-    const txt=await fetch(`${PROXY}/${curProduct}/dir.list`).then(r=>{
-      if(!r.ok)throw new Error(`dir.list ${r.status}`);return r.text();
-    });
-    const files=txt.trim().split('\n').filter(Boolean);
-    if(!files.length)throw new Error('No frames');
-    const N=Math.min(14,files.length);
-    const recent=files.slice(-N);
-    animFrames=recent.map(f=>({filename:f,canvas:null,time:fn2time(f)}));
-    animIdx=animFrames.length-1;
-    $('animSlider').max=animFrames.length-1;
-    $('animSlider').value=animIdx;
-    $('animBar').classList.remove('hidden');
-    $('liveBtn').classList.add('on');
-    await loadFrame(animIdx);
-    showFrame(animIdx);
-    preloadFrames();
-    hideLoad(); setStatus('OK','ok'); startCd(120);
-  }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();console.error(e);}
-}
+  if (wmsLayer) { map.removeLayer(wmsLayer); wmsLayer = null; }
 
-async function loadFrame(idx){
-  if(animFrames[idx]?.canvas)return;
-  const f=animFrames[idx];if(!f)return;
-  const buf=await fetch(`${PROXY}/${curProduct}/${f.filename}`).then(r=>{
-    if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.arrayBuffer();
-  });
-  const data=await decodeWise(buf);
-  f.canvas=dataToCanvas(data, getLut(curColType));
-}
-
-async function preloadFrames(){
-  for(let i=animFrames.length-2;i>=0;i--){
-    if(animFrames[i]?.canvas)continue;
-    try{await loadFrame(i);}catch(e){console.warn('preload fail',i);}
-  }
-}
-
-function showFrame(idx){
-  const f=animFrames[idx];if(!f?.canvas)return;
-  // Update/create the Leaflet overlay using the canvas data URL
-  const url=f.canvas.toDataURL();
-  if(compOverlay){
-    compOverlay.setUrl(url);
-  } else {
-    compOverlay=L.imageOverlay(url, MRMS_BOUNDS, {
-      opacity: opacity,
-      interactive: false,
-      crossOrigin: true
-    }).addTo(map);
-  }
-  compOverlay.setOpacity(opacity);
-  $('animTime').textContent=f.time;
-  $('animSlider').value=idx;
-  $('ppTime').textContent=`Frame: ${f.time} \u2022 ${idx===animFrames.length-1?'\u25cf Live':'Archive'}`;
-  iTime.textContent=f.time;
-  $('liveBtn').classList.toggle('on',idx===animFrames.length-1);
-}
-
-function fn2time(fn){
-  const m=fn.match(/(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_\d{2}/);
-  return m?`${m[2]}/${m[3]} ${m[4]}:${m[5]}z`:fn;
-}
-
-// ── Animation ─────────────────────────────────────────────────────────────
-function animToggle(){animPlaying?animStop():animPlay();}
-function animPlay(){
-  animPlaying=true;$('btnPlay').classList.add('on');$('btnPlay').textContent='\u25a0';
-  clearInterval(cdInt);doAnim();
-}
-function animStop(){
-  animPlaying=false;clearTimeout(animTimer);animTimer=null;
-  $('btnPlay').classList.remove('on');$('btnPlay').textContent='\u25b6';
-}
-function doAnim(){
-  if(!animPlaying)return;
-  animTimer=setTimeout(()=>{
-    animIdx=(animIdx+1)%animFrames.length;
-    if(animFrames[animIdx]?.canvas)showFrame(animIdx);
-    else loadFrame(animIdx).then(()=>showFrame(animIdx)).catch(()=>{});
-    doAnim();
-  },animIdx===animFrames.length-1?1200:400);
-}
-function animStep(d){
-  animStop();animIdx=Math.max(0,Math.min(animFrames.length-1,animIdx+d));
-  if(animFrames[animIdx]?.canvas)showFrame(animIdx);
-  else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
-}
-function animSeek(v){
-  animStop();animIdx=v;
-  if(animFrames[animIdx]?.canvas)showFrame(animIdx);
-  else{showLoad('Loading\u2026');loadFrame(animIdx).then(()=>{showFrame(animIdx);hideLoad();}).catch(()=>hideLoad());}
-}
-function animGoLive(){animStop();animIdx=animFrames.length-1;if(animFrames[animIdx]?.canvas)showFrame(animIdx);}
-
-// ── Product Panel ─────────────────────────────────────────────────────────
-function buildPanel(){
-  const sc=$('ppScroll');sc.innerHTML='';
-  for(const cat of PRODUCT_CATS){
-    const ce=document.createElement('div');ce.className='pp-cat';ce.textContent=cat.cat;sc.appendChild(ce);
-    for(const p of cat.items){
-      const item=document.createElement('div');
-      item.className='pp-item'+(p.id===curProduct?' active':'');
-      item.dataset.id=p.id;
-      const sw=document.createElement('canvas');sw.className='pp-swatch';sw.width=32;sw.height=18;
-      drawSwatch(sw,p.colType);item.appendChild(sw);
-      const inf=document.createElement('div');inf.className='pp-info';
-      const nm=document.createElement('div');nm.className='pp-name';nm.textContent=p.name;
-      const un=document.createElement('div');un.className='pp-unit';un.textContent=p.sub||p.unit||'';
-      inf.appendChild(nm);inf.appendChild(un);item.appendChild(inf);
-      item.onclick=()=>selectProduct(p.id);
-      sc.appendChild(item);
-    }
-  }
-}
-function drawSwatch(canvas,ct){
-  const ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(32,18);
-  for(let x=0;x<32;x++){
-    const v=Math.round((x/31)*254)+1;
-    const r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];
-    for(let y=0;y<18;y++){const i=(y*32+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}
-  }
-  ctx.putImageData(img,0,0);
-}
-function drawLegend(ct){
-  const canvas=$('legCanvas'),ctx=canvas.getContext('2d'),lut=getLut(ct),img=ctx.createImageData(16,200);
-  for(let y=0;y<200;y++){
-    const v=Math.round(((199-y)/199)*254)+1;
-    const r=lut[v*4],g=lut[v*4+1],b=lut[v*4+2],a=lut[v*4+3];
-    for(let x=0;x<16;x++){const i=(y*16+x)*4;img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=a||255;}
-  }
-  ctx.putImageData(img,0,0);
-  const li=getLegInfo(ct);$('legMax').textContent=li.max;$('legMin').textContent=li.min;
-  $('legend').classList.remove('hidden');
-}
-async function selectProduct(id){
-  if(id===curProduct){togglePanel();return;}
-  curProduct=id;const info=getProdInfo(id);curColType=info?.colType||'refl';
-  document.querySelectorAll('.pp-item').forEach(el=>el.classList.toggle('active',el.dataset.id===id));
-  $('prodLabel').textContent=info?.name||id;
-  $('ppProdName').textContent=`MRMS \u2022 ${info?.name||id}`;
-  drawLegend(curColType);togglePanel();
-  await loadComposite();
-}
-function togglePanel(){$('prodPanel').classList.toggle('hidden');}
-
-// ── UI ──────────────────────────────────────────────────────────────────────
-function setMode(m){
-  mode=m;
-  $('btnComp').classList.toggle('active',m==='COMP');
-  $('btnSite').classList.toggle('active',m==='SITE');
-  $('ctrlComp').style.display=m==='COMP'?'':'none';
-  $('ctrlSite').style.display=m==='SITE'?'':'none';
-  $('sRad').style.display=m==='SITE'?'':'none';
-  $('animBar').classList.toggle('hidden',m!=='COMP');
-  $('legend').classList.toggle('hidden',m!=='COMP');
-  if(m==='COMP'){
-    if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
-  } else {
-    if(compOverlay){map.removeLayer(compOverlay);compOverlay=null;}
-  }
-  load();
-}
-function setOpacity(v){
-  opacity=v/100;
-  if(compOverlay)compOverlay.setOpacity(opacity);
-  if(siteOverlay)siteOverlay.setOpacity(opacity);
-}
-function showLoad(m,s=''){$('loading').classList.remove('hidden');$('lmsg').textContent=m;$('lsub').textContent=s;}
-function hideLoad(){$('loading').classList.add('hidden');}
-function showErr(m){const e=$('err');e.textContent=m;e.classList.add('v');setTimeout(()=>e.classList.remove('v'),8000);}
-function setStatus(t,c=''){const el=$('sSts');el.className='sv'+(c?' '+c:'');el.querySelector('span').textContent=t;}
-function startCd(s){clearInterval(cdInt);let t=s;iCd.textContent=t+'s';cdInt=setInterval(()=>{t--;iCd.textContent=t+'s';if(t<=0){clearInterval(cdInt);load();}},1000);}
-
-// ── Single-Site ───────────────────────────────────────────────────────────
-const REF_STOPS=[[5,[4,233,231]],[10,[1,159,244]],[15,[3,0,244]],[20,[2,253,2]],[25,[1,197,1]],[30,[0,142,0]],[35,[253,248,2]],[40,[229,188,0]],[45,[253,149,0]],[50,[253,0,0]],[55,[212,0,0]],[60,[188,0,0]],[65,[248,0,253]],[70,[152,84,198]],[75,[255,255,255]]];
-function gradient(stops,v){if(v<=stops[0][0])return stops[0][1];if(v>=stops[stops.length-1][0])return stops[stops.length-1][1];for(let i=0;i<stops.length-1;i++){if(v>=stops[i][0]&&v<=stops[i+1][0]){const t=(v-stops[i][0])/(stops[i+1][0]-stops[i][0]);return stops[i][1].map((c,j)=>c+t*(stops[i+1][1][j]-c));}}return[128,128,128];}
-async function loadSingleSite(){
-  clearInterval(cdInt);animStop();setStatus('Scanning S3\u2026','warn');showLoad('Scanning S3\u2026');
-  if(siteOverlay){map.removeLayer(siteOverlay);siteOverlay=null;}
-  const site=$('selSite').value,prd=$('selPrd').value,tilt=parseInt($('selTilt').value);
-  iSrc.textContent='S3/'+site;iRad.textContent='\u2014';
-  try{
-    const r=await fetch(`https://unidata-nexrad-level2-chunks.s3.amazonaws.com/?list-type=2&prefix=${site}/&max-keys=400`);
-    const xml=await r.text(),dom=new DOMParser().parseFromString(xml,'text/xml');
-    const keys=[...dom.querySelectorAll('Key')].map(k=>k.textContent);
-    const cks=keys.filter(k=>/_S\d+\.bz2$/i.test(k));
-    if(!cks.length)throw new Error('No chunks');
-    const bv={};cks.forEach(k=>{const m=k.match(/(.*?)_S(\d+)\.bz2/i);if(m){const b=m[1];if(!bv[b])bv[b]=[];bv[b].push(k);}});
-    const vols=Object.keys(bv).sort(),latest=bv[vols[vols.length-1]].sort();
-    showLoad(`Loading ${site}\u2026`,`${latest.length} chunks`);
-    const bufs=await fetchChunks(latest,30);
-    const{azimuth,data,gateSize,firstGate,rangeM}=parseAllChunks(bufs,tilt,prd);
-    if(!azimuth.length)throw new Error('No radials for tilt '+tilt);
-    const ts=vols[vols.length-1].match(/(\d{8}_\d{6})/);
-    iTime.textContent=ts?ts[1].replace('_',' '):'\u2014';iRad.textContent=azimuth.length;
-    const cnv=renderToCanvas(azimuth,data,gateSize,firstGate,prd,rangeM);
-    const ctr=map.getCenter(),bnds=calcBounds(ctr,rangeM||460000);
-    siteOverlay=L.imageOverlay(cnv.toDataURL(),bnds,{opacity,interactive:false}).addTo(map);
-    setStatus('OK','ok');hideLoad();startCd(300);
-  }catch(e){setStatus(e.message,'err');showErr(e.message);hideLoad();}
-}
-function calcBounds(c,rm){const d=rm/111320,dl=rm/(111320*Math.cos(c.lat*Math.PI/180));return[[c.lat-d,c.lng-dl],[c.lat+d,c.lng+dl]];}
-async function fetchChunks(chunks,lim){const base='https://unidata-nexrad-level2-chunks.s3.amazonaws.com/';const sel=chunks.slice(-lim);const bufs=await Promise.all(sel.map(async k=>{const r=await fetch(base+k);if(!r.ok)return null;const ab=await r.arrayBuffer();return new Uint8Array(Bzip2.decompress(new Uint8Array(ab),{small:false}));}));return bufs.filter(Boolean);}
-function parseAllChunks(bufs,tilt,product){const aAz=[],aD=[],elevs=[];let gs=0,fg=0,rm=0;for(const buf of bufs){const view=new DataView(buf.buffer);let off=24;while(off+28<buf.length){const base=off+28;if(base+4>buf.length)break;const mt=view.getUint8(off+15);if(mt!==31){off+=2432+12;continue;}const r=parseMsg31(buf,view,base,elevs);if(!r){off+=2432+12;continue;}const{az,el,moments}=r;if(!elevs.length)elevs.push(el);if(Math.abs(el-elevs[0])>0.5&&elevs.length<=tilt-1)elevs.push(el);if(elevs.length-1===tilt-1){const m=moments[product];if(m){aAz.push(az);aD.push(m.vals);gs=m.gateSize;fg=m.firstGate;rm=Math.max(rm,m.firstGate+m.gateSize*m.vals.length);}}const bc=view.getUint8(base+8);off+=Math.max(28+bc*4+100+12,2432+12);}}return{azimuth:aAz,data:aD,gateSize:gs,firstGate:fg,rangeM:rm};}
-function parseMsg31(data,view,base,elevs){try{if(base+28>data.length)return null;const az=view.getUint16(base,false)/8,el=view.getUint16(base+2,false)/8;const nm=view.getUint8(base+8);const moments={};for(let m=0;m<nm&&m<8;m++){const mb2=base+28+m*4;if(mb2+4>data.length)break;const moff=view.getUint32(mb2,false);if(!moff||base+moff+28>data.length)continue;const mb=base+moff;const name=String.fromCharCode(data[mb],data[mb+1],data[mb+2],data[mb+3]).replace(/\0/g,'').trim();const ng=view.getUint16(mb+8,false),fg=view.getUint16(mb+10,false),gs2=view.getUint16(mb+12,false);const ws=view.getUint8(mb+19),scale=view.getFloat32(mb+20,false),off2=view.getFloat32(mb+24,false);if(ws!==8&&ws!==16)continue;const vals=[];for(let g=0;g<ng;g++){const gi=mb+28+(ws===8?g:g*2);if(gi>=data.length)break;const raw=ws===8?data[gi]:view.getUint16(gi,false);vals.push(raw<=1?null:(raw-off2)/scale);}moments[name]={vals,gateSize:gs2,firstGate:fg};}return{az,el,moments};}catch(e){return null;}}
-function renderToCanvas(azimuth,dataArr,gs,fg,prd,rm){const sz=1024,c=document.createElement('canvas');c.width=sz;c.height=sz;const ctx=c.getContext('2d'),img=ctx.createImageData(sz,sz),px=img.data;const cx=sz/2,sc=sz/(2*rm);for(let i=0;i<azimuth.length-1;i++){const a0=azimuth[i]*Math.PI/180,a1=azimuth[i+1]*Math.PI/180;const gates=dataArr[i];for(let g=0;g<gates.length;g++){const v=gates[g];if(v===null)continue;const[r,gv,b,a]=siteColor(v,prd);if(a===0)continue;const r0=(fg+g*gs)*sc,r1=r0+gs*sc;const da=Math.abs(a1-a0)||0.01;for(let ang=a0;ang<=a1+0.001;ang+=da*0.3){for(let rr=r0;rr<r1+.5;rr+=0.6){const px2=Math.round(cx+Math.sin(ang)*rr),py2=Math.round(cx-Math.cos(ang)*rr);if(px2<0||px2>=sz||py2<0||py2>=sz)continue;const idx=(py2*sz+px2)*4;px[idx]=r;px[idx+1]=gv;px[idx+2]=b;px[idx+3]=a;}}}}ctx.putImageData(img,0,0);return c;}
-function siteColor(v,prd){if(prd==='REF'){if(v<5)return[0,0,0,0];return[...gradient(REF_STOPS,v).map(Math.round),230];}if(prd==='VEL'){if(Math.abs(v)<1)return[0,0,0,0];if(v>0)return[...gradient([[1,[0,200,0]],[30,[0,100,0]],[60,[0,50,0]],[90,[0,30,0]]],Math.min(v,90)).map(Math.round),230];return[...gradient([[0,[0,0,50]],[-30,[0,0,100]],[-60,[0,0,200]],[-90,[0,0,255]]],Math.max(v,-90)).map(Math.round),230];}if(prd==='ZDR'){const t=(v+2)/8;return[...gradient([[0,[0,0,220]],[0.5,[0,220,0]],[1,[220,0,0]]],Math.max(0,Math.min(1,t))).map(Math.round),220];}if(prd==='CC'){if(v<0.7)return[0,0,0,0];const t=(v-0.7)/0.3;return[...gradient([[0,[200,0,0]],[0.5,[220,220,0]],[1,[0,200,0]]],t).map(Math.round),220];}return[128,128,128,120];}
-
-// ── Init ─────────────────────────────────────────────────────────────────
-async function load(){if(mode==='COMP')await loadComposite();else await loadSingleSite();}
-
-window.addEventListener('load',()=>{
-  iSrc=$('sSrc').querySelector('span');iTime=$('sTime').querySelector('span');
-  iRad=$('sRad').querySelector('span');iSts=$('sSts').querySelector('span');iCd=$('sCd').querySelector('span');
-  map=L.map('map',{center:[37,-96],zoom:5,zoomControl:false,attributionControl:true});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-    attribution:'\u00a9 CartoDB',subdomains:'abcd',maxZoom:18
+  wmsLayer = L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/wms', {
+    layers: layer,
+    format: 'image/png',
+    transparent: true,
+    version: '1.3.0',
+    opacity: 0.9,
+    zIndex: 10
   }).addTo(map);
-  $('selSite').onchange=$('selPrd').onchange=$('selTilt').onchange=()=>{if(mode==='SITE')loadSingleSite();};
-  buildPanel(); drawLegend('refl');
-  loadComposite();
-});
+
+  wmsLayer.on('load', () => {
+    document.getElementById('stStatus').innerHTML = 'Status <span style="color:#39ff14">OK</span>';
+    document.getElementById('stTime').textContent = new Date().toUTCString().slice(5,22) + 'z';
+    startCountdown(120);
+  });
+
+  wmsLayer.on('tileerror', () => {
+    document.getElementById('stStatus').innerHTML = 'Status <span style="color:#ff2d2d">Error</span>';
+  });
+
+  // Center map on station
+  const site_upper = document.getElementById('site').value;
+  const coords = COORDS[site_upper];
+  if (coords) map.setView(coords, 8);
+}
+
+function startCountdown(secs) {
+  cdVal = secs;
+  document.getElementById('stNext').innerHTML = `Next <span>${cdVal}s</span>`;
+  cdTimer = setInterval(() => {
+    cdVal--;
+    document.getElementById('stNext').innerHTML = `Next <span>${cdVal}s</span>`;
+    if (cdVal <= 0) { clearInterval(cdTimer); loadSite(); }
+  }, 1000);
+}
 </script>
 </body>
 </html>
