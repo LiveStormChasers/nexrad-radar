@@ -37,9 +37,9 @@ export async function onRequest(context) {
       files.push(m[1]);
     }
 
-    // Sort ascending, keep last 30
+    // Sort ascending, keep last 10
     files.sort();
-    const recent = files.slice(-30);
+    const recent = files.slice(-10);
 
     return new Response(JSON.stringify(recent), {
       headers: {
