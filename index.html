@@ -66,14 +66,8 @@ input[type=range]{width:80px;accent-color:var(--accent)}
   <div class="cg" id="comp-controls">
     <span class="cl">Product</span>
     <select id="comp-prd">
-      <optgroup label="── NEXRAD N0Q ──">
-        <option value="nexrad-n0q">N0Q Composite</option>
-        <option value="nexrad-n0q-900913">N0Q Composite (smooth)</option>
-      </optgroup>
-      <optgroup label="── MRMS SeamlessHSR ──">
-        <option value="q2-hsr">MRMS SeamlessHSR</option>
-        <option value="q2-hsr-900913">MRMS SeamlessHSR (smooth)</option>
-      </optgroup>
+      <option value="nexrad-n0q">NEXRAD N0Q Composite</option>
+      <option value="q2-hsr">MRMS SeamlessHSR</option>
     </select>
   </div>
 
@@ -170,7 +164,10 @@ let siteOverlay = null;
 $('osl').addEventListener('input', e => {
   curOp = +e.target.value;
   $('ov').textContent = curOp + '%';
-  if (radarLayer) radarLayer.setOpacity(curOp/100);
+  if (radarLayer) {
+    radarLayer.setOpacity(curOp/100);
+
+  }
   if (siteOverlay) siteOverlay.setOpacity(curOp/100);
 });
 
@@ -210,38 +207,94 @@ function startCd(secs) {
 
 $('br').addEventListener('click', ()=>{ clearInterval(cdTimer); load(); });
 
-// ── COMPOSITE MODE — Iowa State MESONET (same MRMS source as WeatherWise) ─
-async function loadComposite() {
-  const product = $('comp-prd').value;
-  const labels = {
-    'nexrad-n0q':        'NEXRAD N0Q Composite',
-    'nexrad-n0q-900913': 'NEXRAD N0Q Composite (smooth)',
-    'q2-hsr':            'MRMS SeamlessHSR',
-    'q2-hsr-900913':     'MRMS SeamlessHSR (smooth)',
-  };
-  showLoad('Loading ' + (labels[product]||product) + '…', 'Iowa State MESONET');
-  setStatus('Fetching…','warn');
-  clearOverlays();
+// ── COMPOSITE MODE — Iowa State WMS GetMap (smooth, viewport-resolution) ──
+// n0q: smooth WMS (rendered at viewport resolution, no tile seams)
+// q2-hsr: tile fallback (no WMS available for this product)
+const WMS_SMOOTH = new Set(['nexrad-n0q']);
+
+function buildWmsUrl() {
+  const b = map.getBounds();
+  const sw = L.CRS.EPSG3857.project(b.getSouthWest());
+  const ne = L.CRS.EPSG3857.project(b.getNorthEast());
+  const bbox = `${sw.x},${sw.y},${ne.x},${ne.y}`;
+  const sz = map.getSize();
+  return `https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=nexrad-n0q-900913&STYLES=&SRS=EPSG:3857&BBOX=${bbox}&WIDTH=${sz.x}&HEIGHT=${sz.y}&FORMAT=image/png&TRANSPARENT=true&ts=${Math.floor(Date.now()/60000)}`;
+}
+
+async function fetchWmsOverlay() {
+  if (curMode !== 'COMP') return;
+  const url = buildWmsUrl();
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+
+  if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
+  radarLayer = L.imageOverlay(img.src, map.getBounds(), {
+    opacity: curOp/100,
+    attribution: 'NEXRAD via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
+    zIndex: 200, interactive: false,
+  }).addTo(map);
 
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
   iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
+}
+
+// Re-fetch when map moves/zooms (debounced 300ms)
+let wmsDebounce = null;
+function scheduleWmsRefresh() {
+  if (curMode !== 'COMP') return;
+  const product = $('comp-prd').value;
+  clearTimeout(wmsDebounce);
+  if (WMS_SMOOTH.has(product)) {
+    wmsDebounce = setTimeout(fetchWmsOverlay, 300);
+  }
+}
+
+async function loadComposite() {
+  const product = $('comp-prd').value;
+  const labels = { 'nexrad-n0q': 'NEXRAD N0Q (smooth)', 'q2-hsr': 'MRMS SeamlessHSR' };
+  showLoad('Loading ' + (labels[product]||product) + '…', 'Iowa State MESONET');
+  setStatus('Fetching…','warn');
+  clearOverlays();
   iSrc.textContent = labels[product] || product;
-  $('source-badge').textContent = 'Iowa State MESONET / MRMS';
+  $('source-badge').textContent = 'Iowa State MESONET';
 
-  // bust cache so we always get the latest frame
-  const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png?ts=${Math.floor(Date.now()/60000)}`;
+  if (!map._wmsListeners) {
+    map.on('moveend zoomend', scheduleWmsRefresh);
+    map._wmsListeners = true;
+  }
 
-  radarLayer = L.tileLayer(tileUrl, {
-    opacity: curOp/100,
-    attribution: 'MRMS via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
-    maxZoom: 10, tileSize: 256, zIndex: 200,
-  }).addTo(map);
-
-  hideLoad();
-  setStatus('MRMS Live','ok');
-  updateLegend('REF');
-  startCd(300); // MRMS updates every 2-5 min
+  if (WMS_SMOOTH.has(product)) {
+    // Smooth WMS path — renders at viewport resolution, re-fetches on pan/zoom
+    try {
+      await fetchWmsOverlay();
+      hideLoad();
+      setStatus('Composite Live','ok');
+      updateLegend('REF');
+      startCd(300);
+    } catch(e) {
+      hideLoad();
+      setStatus('WMS error','err');
+      console.error('WMS failed:', e);
+    }
+  } else {
+    // Tile path for q2-hsr (no WMS available)
+    const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png?ts=${Math.floor(Date.now()/60000)}`;
+    radarLayer = L.tileLayer(tileUrl, {
+      opacity: curOp/100,
+      attribution: 'MRMS via <a href="https://mesonet.agron.iastate.edu">Iowa State MESONET</a>',
+      maxZoom: 10, tileSize: 256, zIndex: 200,
+    }).addTo(map);
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    iTim.textContent = `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}Z`;
+    hideLoad();
+    setStatus('Composite Live','ok');
+    updateLegend('REF');
+    startCd(300);
+  }
 }
 
 // ── SINGLE SITE MODE — NEXRAD L2 binary parser ────────────────────────
