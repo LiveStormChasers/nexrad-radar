@@ -87,8 +87,8 @@ const PAL_SIZE = PAL_DATA.length;
 // A pixel is kept only if it has >= minNeighbors of 8 neighbors
 // that also have data (alpha > 0). Runs 2 passes for cleaner result.
 // ═══════════════════════════════════════════════════════════════
-function despeckle(pixels, sz, minNeighbors = 3) {
-  const mask = new Uint8Array(sz * sz); // 1 = has data
+function despeckle(pixels, sz, minNeighbors = 4) {
+  const mask = new Uint8Array(sz * sz);
   for (let i = 0; i < sz * sz; i++) mask[i] = pixels[i * 4 + 3] > 0 ? 1 : 0;
 
   function pass(src) {
@@ -105,9 +105,9 @@ function despeckle(pixels, sz, minNeighbors = 3) {
     return out;
   }
 
-  const result = pass(pass(mask)); // 2 passes
+  const result = pass(pass(pass(mask))); // 3 passes
   for (let i = 0; i < sz * sz; i++) {
-    if (!result[i]) pixels[i * 4 + 3] = 0; // make transparent
+    if (!result[i]) pixels[i * 4 + 3] = 0;
   }
 }
 
@@ -154,9 +154,9 @@ function renderCompact(compactBuf, sz) {
 
       const val = data[gateOffset + azBin * numGates + gateIdx];
       if (val === 0) continue; // no data
-      // Threshold: skip anything below 1 dBZ (same as OpenSnow)
-      // palIdx = val-1, dBZ = palIdx/2 - 32 → val<=66 means dBZ<1
-      if (val <= 66) continue;
+      // Threshold: skip anything below 5 dBZ (matches OpenSnow clean look)
+      // palIdx = val-1, dBZ = palIdx/2 - 32 → val<=74 means dBZ<5
+      if (val <= 74) continue;
 
       const pi = (py * sz + px) * 4;
       const slot = val * 4; // val is palIdx+1, so slot = (palIdx+1)*4
@@ -269,7 +269,7 @@ function renderLevel2(parsed, sz) {
       const gateIdx = Math.floor((rM-firstGateM)/gateSizeM);
       if (gateIdx>=numGates) continue;
       const dbz = radialData[azBin*numGates+gateIdx];
-      if (dbz < 1) continue; // threshold matches OpenSnow
+      if (dbz < 5) continue;
       let idx = Math.round((dbz+32)*2);
       if (idx<0) idx=0; if(idx>=PAL_SIZE) idx=PAL_SIZE-1;
       const pi = (py*sz+px)*4;
