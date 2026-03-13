@@ -360,7 +360,9 @@ function renderLevel2VelFlat(buf) {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24;
   const NUM_AZ = 720;
+  const REF_MASK_DBZ = 5.0;
   let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
+  let refData    = null, refNumGates = 0;
   let foundElevIdx = null;
 
   while (pos + 4 <= data.length) {
@@ -370,12 +372,8 @@ function renderLevel2VelFlat(buf) {
     const recSize = Math.abs(recSizeRaw);
     if (pos + recSize > data.length) break;
     let chunk;
-    if (recSizeRaw < 0) {
-      chunk = data.slice(pos, pos + recSize);
-    } else {
-      try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); }
-      catch(e) { pos += recSize; continue; }
-    }
+    if (recSizeRaw < 0) { chunk = data.slice(pos, pos + recSize); }
+    else { try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); } catch(e) { pos += recSize; continue; } }
     pos += recSize;
     let mpos = 0;
     while (mpos + 28 <= chunk.length) {
@@ -395,36 +393,59 @@ function renderLevel2VelFlat(buf) {
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
+
+    let velPtr=-1,velNG=0,velScl=1,velOfs=0,velFG=0,velGS=0;
+    let refPtr=-1,refNG=0,refScl=1,refOfs=0;
+
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
       if (chunk[bbase] !== 68) continue;
-      // Look for VEL block (type 'D' + 'VEL')
-      if (chunk[bbase+1]!==86||chunk[bbase+2]!==69||chunk[bbase+3]!==76) continue;
+      const b1=chunk[bbase+1],b2=chunk[bbase+2],b3=chunk[bbase+3];
       const bdv = new DataView(chunk.buffer, bbase);
-      const ng  = bdv.getUint16(8,  false);
-      const fg  = bdv.getUint16(10, false);
-      const gs  = bdv.getUint16(12, false);
-      const scl = bdv.getFloat32(20, false);
-      const ofs = bdv.getFloat32(24, false);
-      if (!radialData) {
-        numGates=ng; firstGateM=fg; gateSizeM=gs;
-        radialData=new Float32Array(NUM_AZ*ng).fill(-999);
-        foundElevIdx = elevIdx;
+      const ng=bdv.getUint16(8,false),fg=bdv.getUint16(10,false),gs=bdv.getUint16(12,false);
+      const scl=bdv.getFloat32(20,false),ofs=bdv.getFloat32(24,false);
+      if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs; }
+      if (b1===82&&b2===69&&b3===70) { refPtr=ptr;refNG=ng;refScl=scl;refOfs=ofs; }
+    }
+
+    if (velPtr < 0) return;
+    if (!radialData) {
+      numGates=velNG; firstGateM=velFG; gateSizeM=velGS;
+      radialData=new Float32Array(NUM_AZ*velNG).fill(-999);
+      refNumGates=refNG>0?refNG:velNG;
+      refData=new Float32Array(NUM_AZ*refNumGates).fill(-999);
+      foundElevIdx=elevIdx;
+    }
+    const velOff=base+velPtr+28;
+    for(let g=0;g<velNG&&g<numGates;g++){
+      if(velOff+g>=chunk.length)break;
+      const rv=chunk[chunk.byteOffset+velOff+g];
+      radialData[azBin*numGates+g]=rv<=1?-999:(rv-velOfs)/velScl;
+    }
+    if(refPtr>=0&&refData){
+      const refOff=base+refPtr+28;
+      for(let g=0;g<refNG&&g<refNumGates;g++){
+        if(refOff+g>=chunk.length)break;
+        const rv=chunk[chunk.byteOffset+refOff+g];
+        refData[azBin*refNumGates+g]=rv<=1?-999:(rv-refOfs)/refScl;
       }
-      const dataOff = base + ptr + 28;
-      for (let g = 0; g < ng; g++) {
-        if (dataOff + g >= chunk.length) break;
-        const rv = chunk[chunk.byteOffset + dataOff + g];
-        radialData[azBin*numGates+g] = rv<=1 ? -999 : (rv-ofs)/scl;
-      }
-      break;
     }
   }
 
   if (!radialData) throw new Error('No VEL data found in any elevation');
+
+  // Apply REF quality mask
+  if (refData) {
+    const ratio = refNumGates / numGates;
+    for(let r=0;r<NUM_AZ;r++) for(let g=0;g<numGates;g++){
+      const rg=Math.min(Math.floor(g*ratio),refNumGates-1);
+      if(refData[r*refNumGates+rg]<REF_MASK_DBZ) radialData[r*numGates+g]=-999;
+    }
+  }
+
   const rgba = new Uint8Array(NUM_AZ * numGates * 4);
   for (let r = 0; r < NUM_AZ; r++) {
     for (let g = 0; g < numGates; g++) {
@@ -439,6 +460,7 @@ function renderLevel2VelFlat(buf) {
   const maxRangeM = firstGateM + numGates * gateSizeM;
   return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM / 1000 };
 }
+
 
 
 // ── Compact CC renderer ───────────────────────────────────────────────────
