@@ -140,10 +140,11 @@ function parseLevel2(rawBuf, product = 'ref') {
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
 
-  // Block identifier: 'REF' = [82,69,70], 'VEL' = [86,69,76]
-  const blockId = product === 'vel'
-    ? [86, 69, 76]  // VEL
-    : [82, 69, 70]; // REF
+  // Block identifier bytes
+  // REF=[82,69,70]  VEL=[86,69,76]  RHO=[82,72,79]
+  const blockId = product === 'vel' ? [86,69,76]
+                : product === 'cc'  ? [82,72,79]
+                :                     [82,69,70];
 
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
@@ -252,26 +253,32 @@ function encodeCompact(parsed) {
   const gateStart = headerSize + azSize;
 
   if (product === 'vel') {
-    // Velocity encoding: val = clamp(round(mps / 0.5) + 129, 2, 254)
-    // val 0 = no data, val 1 = range-folded, val 2..254 = data
-    // decode: mps = (val - 129) * 0.5
+    // Velocity: val = clamp(round(mps/0.5)+129, 2, 254)
+    // decode: mps = (val-129)*0.5
     for (let i = 0; i < NUM_AZ * numGates; i++) {
       const mps = radialData[i];
-      if (mps < -900) { u8[gateStart + i] = 0; continue; }
-      let idx = Math.round(mps / 0.5) + 129;
-      if (idx < 2)   idx = 2;
-      if (idx > 254) idx = 254;
-      u8[gateStart + i] = idx;
+      if (mps < -900) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round(mps/0.5)+129;
+      if (idx<2) idx=2; if (idx>254) idx=254;
+      u8[gateStart+i]=idx;
+    }
+  } else if (product === 'cc') {
+    // CC: val=0 → no data, val 2-254 → cc=(val-2)/240.0  (covers 0.0–1.05)
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const cc = radialData[i];
+      if (cc < -900 || cc < 0) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round(cc*240)+2;
+      if (idx<2) idx=2; if (idx>254) idx=254;
+      u8[gateStart+i]=idx;
     }
   } else {
-    // Reflectivity encoding: val = clamp(round((dBZ + 32) * 2) + 1, 1, 254)
+    // Reflectivity: val=0 → no data, val 1-254 → dbz=(val-1)/2-32
     for (let i = 0; i < NUM_AZ * numGates; i++) {
       const dbz = radialData[i];
-      if (dbz < -32) { u8[gateStart + i] = 0; continue; }
-      let idx = Math.round((dbz + 32) * 2);
-      if (idx < 0)   idx = 0;
-      if (idx > 253) idx = 253;
-      u8[gateStart + i] = idx + 1;
+      if (dbz < -32) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round((dbz+32)*2);
+      if (idx<0) idx=0; if (idx>253) idx=253;
+      u8[gateStart+i]=idx+1;
     }
   }
   return u8;
@@ -336,8 +343,10 @@ export async function onRequest(context) {
   // PROCESS — the fast path
   if (path.startsWith('process/')) {
     const rest    = path.slice(8); // KXXX/filename.bz2
-    const product = url.searchParams.get('p') === 'vel' ? 'vel' : 'ref';
-    const cacheId = product === 'vel' ? `v1-vel/${rest}` : `v1/${rest}`;
+    const product = url.searchParams.get('p') === 'vel' ? 'vel'
+                  : url.searchParams.get('p') === 'cc'  ? 'cc'
+                  : 'ref';
+    const cacheId = `v1-${product}/${rest}`;
 
     // Check CF edge cache
     const cache    = caches.default;
