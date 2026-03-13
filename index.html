@@ -239,10 +239,8 @@ function keyToLabel(key) {
 
 // ── Radar rendering via MapLibre image source ─────────────────────────────
 // Canvas source in MapLibre 4 renders transparent pixels as opaque black.
-// Instead: render to canvas → toBlob PNG → object URL → image source.
-// Image source preserves alpha correctly. updateImage() swaps frames in-place.
-
-let lastBlobUrl = null;
+// Fix: render to canvas → toDataURL (synchronous) → image source.
+// toDataURL avoids the async blob URL fetch race that causes the black square.
 
 function radarCoords(maxRangeKm) {
   const r    = maxRangeKm || 460;
@@ -271,9 +269,8 @@ async function redrawCurrentFrame() {
   RADAR_CTX.clearRect(0, 0, 2048, 2048);
   RADAR_CTX.putImageData(imgData, 0, 0);
 
-  // PNG blob preserves alpha — canvas source does not
-  const blob = await new Promise(res => RADAR_CANVAS.toBlob(res, 'image/png'));
-  const url  = URL.createObjectURL(blob);
+  // toDataURL is synchronous — no async fetch race, preserves alpha correctly
+  const url    = RADAR_CANVAS.toDataURL('image/png');
   const coords = radarCoords(f.maxRangeKm);
 
   if (map.getSource('radar')) {
@@ -282,18 +279,14 @@ async function redrawCurrentFrame() {
     map.addSource('radar', { type: 'image', url, coordinates: coords });
     map.addLayer({
       id: 'radar-layer', type: 'raster', source: 'radar',
-      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' }
+      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 }
     });
   }
-
-  if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
-  lastBlobUrl = url;
 }
 
 function clearRadar() {
   if (map.getLayer('radar-layer')) map.removeLayer('radar-layer');
   if (map.getSource('radar'))      map.removeSource('radar');
-  if (lastBlobUrl) { URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
   RADAR_CTX.clearRect(0, 0, 2048, 2048);
 }
 
