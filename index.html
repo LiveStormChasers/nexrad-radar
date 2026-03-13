@@ -237,16 +237,18 @@ function keyToLabel(key) {
   return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZoneName:'short'});
 }
 
-// ── Radar rendering via MapLibre canvas source ────────────────────────────
-// The canvas source is a georeferenced texture inside MapLibre's WebGL pipeline.
-// It moves with the map natively — zero flicker, zero pan lag.
+// ── Radar rendering via MapLibre image source ─────────────────────────────
+// Canvas source in MapLibre 4 renders transparent pixels as opaque black.
+// Instead: render to canvas → toBlob PNG → object URL → image source.
+// Image source preserves alpha correctly. updateImage() swaps frames in-place.
+
+let lastBlobUrl = null;
 
 function radarCoords(maxRangeKm) {
   const r    = maxRangeKm || 460;
   const cosL = Math.cos(curLat * Math.PI / 180);
   const dLat = r / 111.111;
   const dLng = r / (111.111 * cosL);
-  // MapLibre expects [lng, lat] corner order: NW, NE, SE, SW
   return [
     [curLng - dLng, curLat + dLat], // NW
     [curLng + dLng, curLat + dLat], // NE
@@ -259,51 +261,39 @@ async function redrawCurrentFrame() {
   const f = frames[frameIdx];
   if (!f || !f.compactBuf || !mapReady) return;
 
-  // Render polar data → 2048×2048 RGBA pixels in worker
   const result = await runWorker({
     buffer:     f.compactBuf,
     type:       f.msgType === 'compact' ? 'compact' : 'level2',
     canvasSize: 2048
   });
 
-  // Paint pixels into the hidden canvas
   const imgData = new ImageData(new Uint8ClampedArray(result.pixels), 2048, 2048);
   RADAR_CTX.clearRect(0, 0, 2048, 2048);
   RADAR_CTX.putImageData(imgData, 0, 0);
 
+  // PNG blob preserves alpha — canvas source does not
+  const blob = await new Promise(res => RADAR_CANVAS.toBlob(res, 'image/png'));
+  const url  = URL.createObjectURL(blob);
   const coords = radarCoords(f.maxRangeKm);
 
   if (map.getSource('radar')) {
-    // Update geographic bounds and force one texture re-upload
-    map.getSource('radar').setCoordinates(coords);
-    map.getSource('radar').play();
-    map.once('render', () => map.getSource('radar')?.pause());
+    map.getSource('radar').updateImage({ url, coordinates: coords });
   } else {
-    // First frame — create source + layer
-    map.addSource('radar', {
-      type:        'canvas',
-      canvas:      'radarCanvas',
-      coordinates: coords,
-      animate:     false
-    });
+    map.addSource('radar', { type: 'image', url, coordinates: coords });
     map.addLayer({
-      id:   'radar-layer',
-      type: 'raster',
-      source: 'radar',
-      paint: {
-        'raster-opacity':       1.0,
-        'raster-fade-duration': 0
-      }
+      id: 'radar-layer', type: 'raster', source: 'radar',
+      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 }
     });
-    // Trigger initial texture upload
-    map.getSource('radar').play();
-    map.once('render', () => map.getSource('radar')?.pause());
   }
+
+  if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+  lastBlobUrl = url;
 }
 
 function clearRadar() {
   if (map.getLayer('radar-layer')) map.removeLayer('radar-layer');
   if (map.getSource('radar'))      map.removeSource('radar');
+  if (lastBlobUrl) { URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
   RADAR_CTX.clearRect(0, 0, 2048, 2048);
 }
 
