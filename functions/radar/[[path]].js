@@ -176,15 +176,12 @@ function parseLevel2(rawBuf, product = 'ref') {
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
 
-    // REF: accept elevation 1 only (surveillance cut)
-    // VEL: elevation 1 is surveillance-only (no VEL), VEL lives at elevation 2+
-    //      Accept the first elevation we find data for (lowest tilt with VEL)
+    // REF: elevation 1 only (surveillance cut)
+    // VEL/CC: accept whichever elevation first yields the requested block —
+    // split-cut VCPs put VEL on elev 2, but VCP 215/35 put it on elev 1.
     if (product === 'ref') {
       if (elevIdx !== 1) return;
     } else {
-      // For VEL: skip elev 1 entirely (it never has VEL in any VCP),
-      // and once we've found data at an elevation, ignore higher ones
-      if (elevIdx < 2) return;
       if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     }
 
