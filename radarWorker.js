@@ -343,6 +343,8 @@ function renderCompactVelFlat(buf) {
       const mps = (val - 129) * 0.5;
       const rgb = velToRGBA(mps);
       if (!rgb) continue;
+      const pi = dstRow + g * 4;
+      rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
     }
   }
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
@@ -431,6 +433,8 @@ function renderLevel2VelFlat(buf) {
       if (mps <= -900) continue;
       const rgb = velToRGBA(mps);
       if (!rgb) continue;
+      const pi = (r * numGates + g) * 4;
+      rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
     }
   }
   const maxRangeM = firstGateM + numGates * gateSizeM;
