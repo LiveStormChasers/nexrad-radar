@@ -110,14 +110,8 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 #bPlay:hover{background:var(--brand-hover)}
 #bPlay:active{transform:scale(0.9)}
 
-/* ── Site pills on map ── */
-.site-pill{display:inline-flex;align-items:center;gap:3px;background:#0b1520cc;border:1.5px solid #3b9afa33;border-radius:16px;padding:2px 8px 2px 5px;font-size:10px;font-weight:700;color:#7aaabb;cursor:pointer;backdrop-filter:blur(4px);transition:all .1s;box-shadow:0 1px 4px #00000066;white-space:nowrap;pointer-events:auto}
-.site-pill:hover{border-color:#3b9afaaa;color:#fff;background:#1a2a3ccc}
-.site-pill.sel{border-color:var(--brand);color:#fff;background:#3b9afa18;box-shadow:0 0 8px #3b9afa44}
-.site-dot{width:5px;height:5px;border-radius:50%;background:#3b9afa55;flex-shrink:0;transition:background .1s}
-.site-pill.sel .site-dot{background:var(--brand)}
-
 /* ── Mapbox overrides ── */
+.mapboxgl-marker{will-change:transform;backface-visibility:hidden}
 .mapboxgl-marker{will-change:transform;backface-visibility:hidden}
 .mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
 .mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
@@ -573,56 +567,127 @@ window.onload = () => {
   });
 };
 
-// ── Station pill markers — viewport-culled ────────────────────────────────
-// Keeps all 142 markers in a pool but only adds visible ones to the map.
-// This means only ~10-20 DOM elements are being CSS-transformed per frame
-// instead of all 142, which eliminates the visual lag during panning.
-const markerPool = {}; // id → { marker, el, lat, lng }
+// ── Station GL sprite pills ────────────────────────────────────────────────
+// Draws each station label as a canvas pill, adds it to the map image atlas,
+// then renders all stations as a single symbol layer inside the WebGL pipeline.
+// This is the only approach that gives zero-lag geo-locking during pan/zoom.
 
-function addStationMarkers() {
-  // Build pool — don't add to map yet
-  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
-    const el = document.createElement('div');
-    el.className = 'site-pill';
-    el.innerHTML = `<span class="site-dot"></span>${id}`;
-    el.addEventListener('click', () => selectStation(id, lat, lng, el));
-    const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([lng, lat]);
-    markerPool[id] = { marker, el, lat, lng, added: false };
-  }
+let selStationId = null;
 
-  // Update visibility on every camera move
-  map.on('moveend', updateMarkerVisibility);
-  map.on('zoomend', updateMarkerVisibility);
-  updateMarkerVisibility();
+function makePillCanvas(id, selected) {
+  const dpr    = window.devicePixelRatio || 1;
+  const font   = `bold ${10 * dpr}px "DIN Pro","Arial Narrow",Arial,sans-serif`;
+  // Measure text
+  const tmp = document.createElement('canvas').getContext('2d');
+  tmp.font = font;
+  const tw = tmp.measureText(id).width;
+  const dotR  = 3 * dpr;
+  const pad   = 6 * dpr;
+  const gap   = 4 * dpr;
+  const h     = 18 * dpr;
+  const w     = Math.ceil(pad + dotR * 2 + gap + tw + pad);
+  const r     = h / 2;  // pill radius
+
+  const c   = document.createElement('canvas');
+  c.width   = w;
+  c.height  = h;
+  const ctx = c.getContext('2d');
+
+  // Pill background
+  ctx.beginPath();
+  ctx.moveTo(r, 0); ctx.lineTo(w - r, 0);
+  ctx.arcTo(w, 0, w, r, r);
+  ctx.lineTo(w, h - r);
+  ctx.arcTo(w, h, w - r, h, r);
+  ctx.lineTo(r, h);
+  ctx.arcTo(0, h, 0, h - r, r);
+  ctx.lineTo(0, r);
+  ctx.arcTo(0, 0, r, 0, r);
+  ctx.closePath();
+  ctx.fillStyle   = selected ? 'rgba(59,154,250,0.20)' : 'rgba(11,21,32,0.82)';
+  ctx.fill();
+  // Border
+  ctx.strokeStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.28)';
+  ctx.lineWidth   = selected ? 1.5 * dpr : 1 * dpr;
+  ctx.stroke();
+
+  // Dot
+  const dotX = pad + dotR;
+  const dotY = h / 2;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.45)';
+  ctx.fill();
+
+  // Text
+  ctx.font         = font;
+  ctx.fillStyle    = selected ? '#ffffff' : '#7aaabb';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(id, dotX + dotR + gap, dotY);
+
+  return { canvas: c, w, h };
 }
 
-function updateMarkerVisibility() {
-  const bounds = map.getBounds();
-  // Pad bounds slightly so pills near edges don't pop in/out
-  const pad = 2; // degrees
-  const n = bounds.getNorth() + pad;
-  const s = bounds.getSouth() - pad;
-  const e = bounds.getEast()  + pad;
-  const w = bounds.getWest()  - pad;
+function addStationMarkers() {
+  const features = [];
 
-  for (const id of Object.keys(markerPool)) {
-    const { marker, lat, lng, added } = markerPool[id];
-    const inView = lat <= n && lat >= s && lng <= e && lng >= w;
-    if (inView && !added) {
-      marker.addTo(map);
-      markerPool[id].added = true;
-    } else if (!inView && added) {
-      marker.remove();
-      markerPool[id].added = false;
-    }
+  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
+    // Add normal + selected images to atlas
+    const { canvas: cn, w, h } = makePillCanvas(id, false);
+    const { canvas: cs }       = makePillCanvas(id, true);
+    map.addImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
+    map.addImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
+
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: { id, lat, lng, sel: false }
+    });
   }
+
+  map.addSource('stations', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features }
+  });
+
+  map.addLayer({
+    id:     'stations-pills',
+    type:   'symbol',
+    source: 'stations',
+    layout: {
+      'icon-image':           ['case', ['get', 'sel'], ['concat', 'pill-', ['get', 'id'], '-sel'], ['concat', 'pill-', ['get', 'id']]],
+      'icon-allow-overlap':   true,
+      'icon-ignore-placement':true,
+      'icon-anchor':          'center',
+    },
+    paint: {
+      'icon-opacity': 1
+    }
+  });
+
+  // Click handler
+  map.on('click', 'stations-pills', e => {
+    const p = e.features[0].properties;
+    selectStation(p.id, p.lat, p.lng);
+  });
+  map.on('mouseenter', 'stations-pills', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'stations-pills', () => { map.getCanvas().style.cursor = ''; });
+}
+
+function setStationSelected(id) {
+  // Rebuild GeoJSON with updated sel flag — cheapest way to trigger icon-image update
+  const features = Object.entries(STATIONS).map(([sid, [lat, lng]]) => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { id: sid, lat, lng, sel: sid === id }
+  }));
+  map.getSource('stations').setData({ type: 'FeatureCollection', features });
 }
 
 // ── Station selection ─────────────────────────────────────────────────────
-async function selectStation(id, lat, lng, el) {
-  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
-  if (el) el.classList.add('sel');
+async function selectStation(id, lat, lng) {
+  selStationId = id;
+  setStationSelected(id);
   curSite = id; curLat = lat; curLng = lng;
   document.getElementById('scName').textContent  = id;
   document.getElementById('stationCard').style.display = 'flex';
