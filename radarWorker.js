@@ -82,6 +82,35 @@ const PAL_SIZE = PAL_DATA.length;
 // FAST PATH — render compact binary (pre-processed by CF Worker)
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// DESPECKLE — removes isolated pixels (ground clutter, noise)
+// A pixel is kept only if it has >= minNeighbors of 8 neighbors
+// that also have data (alpha > 0). Runs 2 passes for cleaner result.
+// ═══════════════════════════════════════════════════════════════
+function despeckle(pixels, sz, minNeighbors = 3) {
+  const mask = new Uint8Array(sz * sz); // 1 = has data
+  for (let i = 0; i < sz * sz; i++) mask[i] = pixels[i * 4 + 3] > 0 ? 1 : 0;
+
+  function pass(src) {
+    const out = new Uint8Array(sz * sz);
+    for (let y = 1; y < sz - 1; y++) {
+      for (let x = 1; x < sz - 1; x++) {
+        if (!src[y * sz + x]) continue;
+        let n = src[(y-1)*sz+(x-1)] + src[(y-1)*sz+x] + src[(y-1)*sz+(x+1)]
+              + src[y*sz+(x-1)]                        + src[y*sz+(x+1)]
+              + src[(y+1)*sz+(x-1)] + src[(y+1)*sz+x] + src[(y+1)*sz+(x+1)];
+        if (n >= minNeighbors) out[y * sz + x] = 1;
+      }
+    }
+    return out;
+  }
+
+  const result = pass(pass(mask)); // 2 passes
+  for (let i = 0; i < sz * sz; i++) {
+    if (!result[i]) pixels[i * 4 + 3] = 0; // make transparent
+  }
+}
+
 function renderCompact(compactBuf, sz) {
   const data = new Uint8Array(compactBuf);
   const dv   = new DataView(compactBuf);
@@ -135,6 +164,7 @@ function renderCompact(compactBuf, sz) {
     }
   }
 
+  despeckle(pixels, sz);
   return { pixels, width: sz, height: sz, maxRangeKm };
 }
 
@@ -243,6 +273,7 @@ function renderLevel2(parsed, sz) {
       pixels[pi]=PALETTE[idx*3]; pixels[pi+1]=PALETTE[idx*3+1]; pixels[pi+2]=PALETTE[idx*3+2]; pixels[pi+3]=230;
     }
   }
+  despeckle(pixels, sz);
   return { pixels, width:sz, height:sz, maxRangeKm };
 }
 
