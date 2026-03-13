@@ -246,7 +246,7 @@ async function fetchAndRender(fi) {
     msgType = 'level2';
   }
 
-  const rendered = await runWorker(buf, 800, msgType);
+  const rendered = await runWorker(buf, 2048, msgType);
   f.imgData    = rendered.pixels;
   f.maxRangeKm = rendered.maxRangeKm;
   f.width      = rendered.width;
