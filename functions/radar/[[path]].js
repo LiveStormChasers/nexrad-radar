@@ -139,6 +139,7 @@ function parseLevel2(rawBuf, product = 'ref') {
 
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
+  let foundElevIdx = null; // track first elevation we find data for
 
   // Block identifier bytes
   // REF=[82,69,70]  VEL=[86,69,76]  RHO=[82,72,79]
@@ -169,8 +170,6 @@ function parseLevel2(rawBuf, product = 'ref') {
       mpos += Math.max(msgBytes, 28);
     }
   }
-
-  let foundElevIdx = null; // track the first elevation we find data for
 
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
