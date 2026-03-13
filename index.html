@@ -282,7 +282,7 @@ async function redrawCurrentFrame() {
     map.addSource('radar', { type: 'image', url, coordinates: coords });
     map.addLayer({
       id: 'radar-layer', type: 'raster', source: 'radar',
-      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 }
+      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' }
     });
   }
 
