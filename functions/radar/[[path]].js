@@ -139,10 +139,16 @@ function parseLevel2(rawBuf, product = 'ref') {
 
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
-  let foundElevIdx = null; // track first elevation we find data for
+  let foundElevIdx = null;
 
-  // Block identifier bytes
-  // REF=[82,69,70]  VEL=[86,69,76]  RHO=[82,72,79]
+  // For VEL/CC we also extract co-located REF to use as a quality mask.
+  // Gates with REF below threshold are noise/clutter → set to no-data.
+  // This matches OpenSnow's server-side quality control approach.
+  const REF_MASK_THRESHOLD = 5.0; // dBZ — any real precipitation echo
+  let refData = null, refNumGates = 0;
+
+  // Block identifier bytes: REF=[82,69,70]  VEL=[86,69,76]  RHO=[82,72,79]
+  const REF_ID  = [82, 69, 70];
   const blockId = product === 'vel' ? [86,69,76]
                 : product === 'cc'  ? [82,72,79]
                 :                     [82,69,70];
@@ -171,14 +177,20 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
+  function readBlock(chunk, base, bptr, ng, scl, ofs, dest, destNG) {
+    const dataOff = base + bptr + 28;
+    for (let g = 0; g < Math.min(ng, destNG); g++) {
+      if (dataOff + g >= chunk.length) break;
+      const raw = chunk[chunk.byteOffset + dataOff + g];
+      dest[g] = raw <= 1 ? -999 : (raw - ofs) / scl;
+    }
+  }
+
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
 
-    // REF: elevation 1 only (surveillance cut)
-    // VEL/CC: accept whichever elevation first yields the requested block —
-    // split-cut VCPs put VEL on elev 2, but VCP 215/35 put it on elev 1.
     if (product === 'ref') {
       if (elevIdx !== 1) return;
     } else {
@@ -188,36 +200,87 @@ function parseLevel2(rawBuf, product = 'ref') {
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
+
+    // Scan all blocks in this radial for the primary + REF (for masking)
+    let primaryPtr = -1, primaryNG = 0, primaryScl = 1, primaryOfs = 0, primaryFG = 0, primaryGS = 0;
+    let refPtr     = -1, refNG     = 0, refScl     = 1, refOfs     = 0;
+
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
-      if (chunk[bbase] !== 68) continue;
-      if (chunk[bbase+1] !== blockId[0] || chunk[bbase+2] !== blockId[1] || chunk[bbase+3] !== blockId[2]) continue;
+      if (chunk[bbase] !== 68) continue; // must start with 'D'
+      const b1 = chunk[bbase+1], b2 = chunk[bbase+2], b3 = chunk[bbase+3];
       const bdv = new DataView(chunk.buffer, bbase);
       const ng  = bdv.getUint16(8,  false);
       const fg  = bdv.getUint16(10, false);
       const gs  = bdv.getUint16(12, false);
       const scl = bdv.getFloat32(20, false);
       const ofs = bdv.getFloat32(24, false);
-      if (!radialData) {
-        numGates = ng; firstGateM = fg; gateSizeM = gs;
-        radialData = new Float32Array(NUM_AZ * ng).fill(-999);
-        foundElevIdx = elevIdx;
+
+      if (b1 === blockId[0] && b2 === blockId[1] && b3 === blockId[2]) {
+        primaryPtr = ptr; primaryNG = ng; primaryScl = scl; primaryOfs = ofs;
+        primaryFG = fg; primaryGS = gs;
       }
-      azAngles[azBin] = az;
-      const dataOff = base + ptr + 28;
-      for (let g = 0; g < ng; g++) {
-        if (dataOff + g >= chunk.length) break;
-        const raw = chunk[chunk.byteOffset + dataOff + g];
-        radialData[azBin * numGates + g] = raw <= 1 ? -999 : (raw - ofs) / scl;
+      // Also grab REF for masking (when processing VEL or CC)
+      if (product !== 'ref' && b1 === REF_ID[0] && b2 === REF_ID[1] && b3 === REF_ID[2]) {
+        refPtr = ptr; refNG = ng; refScl = scl; refOfs = ofs;
       }
-      break;
+    }
+
+    if (primaryPtr < 0) return; // primary block not found in this radial
+
+    // Initialize data arrays on first successful radial
+    if (!radialData) {
+      numGates   = primaryNG;
+      firstGateM = primaryFG;
+      gateSizeM  = primaryGS;
+      radialData = new Float32Array(NUM_AZ * primaryNG).fill(-999);
+      foundElevIdx = elevIdx;
+      if (product !== 'ref') {
+        refNumGates = refNG > 0 ? refNG : primaryNG;
+        refData = new Float32Array(NUM_AZ * refNumGates).fill(-999);
+      }
+    }
+
+    azAngles[azBin] = az;
+
+    // Read primary block
+    const dataOff = base + primaryPtr + 28;
+    for (let g = 0; g < primaryNG && g < numGates; g++) {
+      if (dataOff + g >= chunk.length) break;
+      const raw = chunk[chunk.byteOffset + dataOff + g];
+      radialData[azBin * numGates + g] = raw <= 1 ? -999 : (raw - primaryOfs) / primaryScl;
+    }
+
+    // Read co-located REF for masking
+    if (product !== 'ref' && refPtr >= 0 && refData) {
+      const refOff = base + refPtr + 28;
+      for (let g = 0; g < refNG && g < refNumGates; g++) {
+        if (refOff + g >= chunk.length) break;
+        const raw = chunk[chunk.byteOffset + refOff + g];
+        refData[azBin * refNumGates + g] = raw <= 1 ? -999 : (raw - refOfs) / refScl;
+      }
     }
   }
 
-  if (!radialData) throw new Error(`No elevation-1 ${product.toUpperCase()} data found`);
+  if (!radialData) throw new Error(`No ${product.toUpperCase()} data found in any elevation`);
+
+  // Apply REF quality mask to VEL/CC: zero out gates without a real echo
+  if (product !== 'ref' && refData) {
+    const refGateRatio = refNumGates / numGates; // usually 1:1 or 4:1 depending on VCP
+    for (let r = 0; r < NUM_AZ; r++) {
+      for (let g = 0; g < numGates; g++) {
+        const refG = Math.min(Math.floor(g * refGateRatio), refNumGates - 1);
+        const ref  = refData[r * refNumGates + refG];
+        if (ref < REF_MASK_THRESHOLD) {
+          radialData[r * numGates + g] = -999;
+        }
+      }
+    }
+  }
+
   return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product };
 }
 
