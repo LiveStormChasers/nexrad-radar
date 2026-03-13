@@ -391,7 +391,6 @@ function renderLevel2VelFlat(buf) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
-    if (elevIdx < 2) return; // VEL never on elev 1 (surveillance cut)
     if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
@@ -425,7 +424,7 @@ function renderLevel2VelFlat(buf) {
     }
   }
 
-  if (!radialData) throw new Error('No elevation-1 VEL data found');
+  if (!radialData) throw new Error('No VEL data found in any elevation');
   const rgba = new Uint8Array(NUM_AZ * numGates * 4);
   for (let r = 0; r < NUM_AZ; r++) {
     for (let g = 0; g < numGates; g++) {
@@ -500,7 +499,6 @@ function renderLevel2CCFlat(buf) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
-    if (elevIdx < 2) return;
     if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
