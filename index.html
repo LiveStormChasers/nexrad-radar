@@ -8,47 +8,123 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#070a0d;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-#topbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:#0d1117ee;border-bottom:1px solid #ffffff0f;flex-shrink:0;backdrop-filter:blur(12px);z-index:1000}
-.logo{font-size:14px;font-weight:800;color:#38d9f5;letter-spacing:.06em;white-space:nowrap}
+:root{--brand:#3b9afa;--brand-hover:#5aadff;--gray4:#69747d;--gray5a:rgba(16,19,24,0.72);--panel-border:rgba(255,255,255,0.10)}
+body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;overflow:hidden}
+
+/* ── Topbar ── */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;align-items:center;gap:10px;padding:6px 14px;background:#0d1117ee;border-bottom:1px solid #ffffff0f;backdrop-filter:blur(12px)}
+.logo{font-size:14px;font-weight:800;color:var(--brand);letter-spacing:.06em;white-space:nowrap}
 select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;padding:4px 10px;border-radius:16px;cursor:pointer;outline:none}
-#curSite{font-size:12px;font-weight:700;color:#4a6a80}
 .spacer{flex:1}
-#liveTag{font-size:9px;font-weight:800;color:#38d9f5;background:#38d9f518;border:1px solid #38d9f540;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
+#liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
 #loadStatus{font-size:10px;color:#4a6a80}
-#map{flex:1;position:relative;background:#070a0d}
-#legend{position:fixed;bottom:60px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
+
+/* ── Map (full screen) ── */
+#map{position:fixed;inset:0;background:#000}
+
+/* ── Legend ── */
+#legend{position:fixed;bottom:130px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
 #legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
 #legend-labels{display:flex;justify-content:space-between;font-size:8px;color:#4a6a80;width:200px}
-#sliderBar{flex-shrink:0;background:#111518;border-top:1px solid #ffffff08}
-#sliderRow{display:flex;align-items:center;padding:0}
-#playControls{display:flex;align-items:center;justify-content:center;gap:18px;padding:6px 0 8px;background:#111518}
-.cb{background:none;border:none;color:#3a5a70;font-size:15px;cursor:pointer;padding:3px 6px;border-radius:5px;transition:color .15s;line-height:1}
-.cb:hover,.cb.on{color:#38d9f5}
-#bPlay{width:36px;height:36px;border-radius:50%;background:#38d9f5;color:#000;font-size:14px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;transition:background .15s;flex-shrink:0}
-#bPlay:hover{background:#5ee8ff}
-#stationCard{position:fixed;bottom:0;left:50%;transform:translateX(-50%);z-index:900;background:#1a2030ee;border:1px solid #ffffff14;border-bottom:none;border-radius:12px 12px 0 0;padding:7px 16px;display:none;backdrop-filter:blur(12px);white-space:nowrap}
-#stationCard .sc-name{font-size:13px;font-weight:600;color:#e8f0f8}
-#stationCard .sc-sub{font-size:11px;color:#4a6a80;margin-top:1px}
-#track{flex:1;height:32px;position:relative;cursor:pointer;background:#0d1117}
-#rail{position:absolute;inset:0;margin:auto;height:4px;background:#1a2535;border-radius:0}
-#fill{position:absolute;left:0;top:50%;margin-top:-2px;height:4px;background:#38d9f5;border-radius:0;pointer-events:none;width:0}
-#thumb{position:absolute;top:50%;width:3px;height:20px;background:#38d9f5;border-radius:1px;transform:translate(-50%,-50%);pointer-events:none;left:0}
-#ticks{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center}
-.tk{position:absolute;top:0;bottom:0;width:1px;background:#1e2e40;transform:translateX(-50%)}
-.tk.on{background:#38d9f5}
-.tk.loaded{background:#2a4060}
-.site-pill{display:inline-flex;align-items:center;gap:3px;background:#0b1520cc;border:1.5px solid #38d9f533;border-radius:16px;padding:2px 6px 2px 4px;font-size:9px;font-weight:700;color:#7aaabb;cursor:pointer;backdrop-filter:blur(4px);transition:all .1s;box-shadow:0 1px 3px #00000055;white-space:nowrap}
-.site-pill:hover{border-color:#38d9f5aa;color:#fff;background:#1a2a3ccc}
-.site-pill.sel{border-color:#38d9f5;color:#fff;background:#38d9f518;box-shadow:0 0 8px #38d9f533}
-.site-dot{width:5px;height:5px;border-radius:50%;background:#38d9f566;flex-shrink:0}
-.site-pill.sel .site-dot{background:#38d9f5}
+
+/* ── Bottom wrap ── */
+#bottomWrap{position:fixed;bottom:0;left:0;right:0;z-index:900;pointer-events:none}
+
+/* ── Station card (above panel) ── */
+#stationCard{
+  display:none;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:8px;
+  pointer-events:auto;
+}
+#scPill{
+  display:flex;align-items:center;gap:8px;
+  background:var(--gray5a);border:1px solid var(--panel-border);
+  border-radius:9999px;padding:8px 16px 8px 12px;
+  backdrop-filter:blur(8px);cursor:pointer;
+  transition:background .15s;
+}
+#scPill:hover{background:rgba(30,35,44,0.85)}
+.sc-icon{color:var(--brand);display:flex;align-items:center;flex-shrink:0}
+.sc-texts{line-height:1.3}
+.sc-name{font-size:13px;font-weight:600;color:#e8f0f8}
+.sc-sub{font-size:11px;color:#8a9ab0}
+.sc-chevron{color:#8a9ab0;display:flex;align-items:center;margin-left:4px;flex-shrink:0}
+
+/* ── Panel (glass bar) ── */
+#panel{
+  width:100%;
+  border-top:1px solid var(--panel-border);
+  background:var(--gray5a);
+  backdrop-filter:blur(8px);
+  pointer-events:auto;
+}
+
+/* ── Segment timeline ── */
+#segmentRow{
+  display:flex;align-items:center;
+  padding:24px 24px 16px;
+  cursor:grab;
+  user-select:none;
+}
+#segmentRow:active{cursor:grabbing}
+.seg{
+  flex:1;
+  height:15px;
+  margin-right:1px;
+  border-radius:2px;
+  background:var(--gray4);
+  cursor:pointer;
+  transition:background .1s;
+  flex-shrink:0;
+}
+.seg:last-child{margin-right:0}
+.seg.seg-past{background:#4a5560}
+.seg.seg-active{background:var(--brand);min-width:10px}
+.seg.seg-future{background:var(--gray4)}
+
+/* ── Controls row ── */
+#controlRow{
+  display:flex;align-items:center;justify-content:center;
+  padding:0 0 12px;
+  gap:0;
+}
+.ctrl-btn{
+  background:none;border:none;color:#8a9ab0;
+  height:45px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;padding:0 12px;
+  transition:color .15s, transform .1s;
+}
+.ctrl-btn:hover{color:#e0e8f0}
+.ctrl-btn:active{transform:scale(0.9)}
+#bPlay{
+  width:45px;height:45px;border-radius:9999px;
+  background:var(--brand);color:#fff;border:none;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;margin:0 12px;
+  transition:background .15s, transform .1s;
+  flex-shrink:0;
+}
+#bPlay:hover{background:var(--brand-hover)}
+#bPlay:active{transform:scale(0.9)}
+
+/* ── Site pills on map ── */
+.site-pill{display:inline-flex;align-items:center;gap:3px;background:#0b1520cc;border:1.5px solid #3b9afa33;border-radius:16px;padding:2px 6px 2px 4px;font-size:9px;font-weight:700;color:#7aaabb;cursor:pointer;backdrop-filter:blur(4px);transition:all .1s;box-shadow:0 1px 3px #00000055;white-space:nowrap}
+.site-pill:hover{border-color:#3b9afaaa;color:#fff;background:#1a2a3ccc}
+.site-pill.sel{border-color:var(--brand);color:#fff;background:#3b9afa18;box-shadow:0 0 8px #3b9afa33}
+.site-dot{width:5px;height:5px;border-radius:50%;background:#3b9afa66;flex-shrink:0}
+.site-pill.sel .site-dot{background:var(--brand)}
+
+/* ── Mapbox overrides ── */
 .mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
 .mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
 .mapboxgl-ctrl-group button:hover{background:#1a2535!important}
 .mapboxgl-ctrl-attrib{background:#0d111799!important;color:#4a6a80!important;font-size:9px}
 .mapboxgl-ctrl-attrib a{color:#4a8090!important}
+.mapboxgl-ctrl-bottom-right{bottom:140px!important}
+.mapboxgl-ctrl-bottom-left{bottom:140px!important}
 </style>
 </head>
 <body>
@@ -56,34 +132,80 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 <div id="topbar">
   <div class="logo">⚡ NEXRAD</div>
   <select id="product"><option value="REF">Reflectivity</option></select>
-  <div id="curSite">← pick a station</div>
   <div class="spacer"></div>
   <div id="loadStatus"></div>
   <div id="liveTag">● LIVE</div>
 </div>
 
 <div id="map"></div>
+
 <div id="legend">
-    <div id="legend-bar"></div>
-    <div id="legend-labels"><span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span></div>
-</div>
-<div id="stationCard">
-    <div class="sc-name" id="scName">—</div>
-    <div class="sc-sub" id="scSub">Reflectivity • 0.5°</div>
+  <div id="legend-bar"></div>
+  <div id="legend-labels"><span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span></div>
 </div>
 
-<div id="sliderBar">
-  <div id="sliderRow">
-    <div id="track"><div id="rail"></div><div id="fill"></div><div id="ticks"></div><div id="thumb"></div></div>
+<!-- Bottom controls — matches OpenSnow layout exactly -->
+<div id="bottomWrap">
+
+  <!-- Station card pill, floats above panel -->
+  <div id="stationCard">
+    <div id="scPill">
+      <div class="sc-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" stroke-width="1.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 12C22 17.5242 17.5242 22 12 22C6.47581 22 2 17.5242 2 12C2 6.47581 6.47581 2 12 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M12 6L12 12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M17.5 2.5C18.5 1.5 20.5 2 20.5 2C20.5 2 21 4 20 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="sc-texts">
+        <div class="sc-name" id="scName">—</div>
+        <div class="sc-sub" id="scSub">Reflectivity • 0.5°</div>
+      </div>
+      <div class="sc-chevron">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
   </div>
-  <div id="playControls">
-    <button class="cb" id="b0" title="Oldest">⏮</button>
-    <button class="cb" id="b1" title="Step back">◀</button>
-    <button id="bPlay" title="Play/Pause">▶</button>
-    <button class="cb" id="b2" title="Step fwd">▶|</button>
-    <button class="cb" id="b3" title="Latest">⏭</button>
-  </div>
-</div>
+
+  <!-- Glass panel: timeline + controls -->
+  <div id="panel">
+
+    <!-- Timeline segments -->
+    <div id="segmentRow"></div>
+
+    <!-- Play controls -->
+    <div id="controlRow">
+      <!-- Skip to start / step back -->
+      <button class="ctrl-btn" id="bBack" title="Step back">
+        <svg width="22" height="22" viewBox="0 0 17 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13.8452 1.06197C14.8216 0.24455 16.3081 0.938743 16.3081 2.2121V15.7879C16.3081 17.0613 14.8216 17.7554 13.8452 16.938L5.73743 10.1501C5.02131 9.55059 5.02131 8.44941 5.73743 7.84986L13.8452 1.06197Z" fill="currentColor"/>
+          <rect x="0.272705" y="0.818237" width="3.63636" height="16.3636" rx="1" fill="currentColor"/>
+        </svg>
+      </button>
+
+      <!-- Play / Pause -->
+      <button id="bPlay" title="Play/Pause">
+        <svg id="iconPlay" width="28" height="28" viewBox="0 0 384 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z" fill="currentColor"/>
+        </svg>
+        <svg id="iconPause" width="28" height="28" viewBox="0 0 320 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none">
+          <path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48H80c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H240z" fill="currentColor"/>
+        </svg>
+      </button>
+
+      <!-- Skip forward / step fwd -->
+      <button class="ctrl-btn" id="bFwd" title="Step forward">
+        <svg width="22" height="22" viewBox="0 0 17 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="transform:scaleX(-1)">
+          <path d="M13.8452 1.06197C14.8216 0.24455 16.3081 0.938743 16.3081 2.2121V15.7879C16.3081 17.0613 14.8216 17.7554 13.8452 16.938L5.73743 10.1501C5.02131 9.55059 5.02131 8.44941 5.73743 7.84986L13.8452 1.06197Z" fill="currentColor"/>
+          <rect x="0.272705" y="0.818237" width="3.63636" height="16.3636" rx="1" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+
+  </div><!-- #panel -->
+</div><!-- #bottomWrap -->
 
 <script>
 const STATIONS={KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],KBBX:[39.49,-121.63],KBGM:[42.2,-75.99],KBHX:[40.5,-124.29],KBIS:[46.77,-100.76],KBLX:[45.85,-108.61],KBMX:[33.17,-86.77],KBOX:[41.96,-71.14],KBRO:[25.92,-97.42],KBUF:[42.95,-78.74],KBYX:[24.6,-81.7],KCAE:[33.95,-81.12],KCBW:[46.04,-67.81],KCBX:[43.49,-116.23],KCCX:[40.92,-78.0],KCLE:[41.41,-81.86],KCLX:[32.66,-81.04],KCRP:[27.78,-97.51],KCXX:[44.51,-73.17],KCYS:[41.15,-104.81],KDAX:[38.5,-121.68],KDDC:[37.76,-99.97],KDFX:[29.27,-100.28],KDGX:[32.28,-89.98],KDIX:[39.95,-74.41],KDLH:[46.84,-92.21],KDMX:[41.73,-93.72],KDOX:[38.82,-75.44],KDTX:[42.7,-83.47],KDVN:[41.61,-90.58],KDYX:[32.54,-99.25],KEAX:[38.81,-94.26],KEMX:[31.89,-110.63],KENX:[42.59,-74.06],KEOX:[31.46,-85.46],KEPZ:[31.87,-106.7],KESX:[35.7,-114.89],KEVX:[30.56,-85.92],KEWX:[29.7,-98.03],KEYX:[35.1,-117.56],KFCX:[37.02,-80.27],KFDR:[34.36,-98.97],KFDX:[34.63,-103.63],KFFC:[33.36,-84.57],KFSD:[43.59,-96.73],KFSX:[34.57,-111.2],KFTG:[39.79,-104.55],KFWS:[32.57,-97.3],KGGW:[48.21,-106.63],KGJX:[39.06,-108.21],KGLD:[39.37,-101.7],KGRB:[44.5,-88.11],KGRK:[30.72,-97.38],KGRR:[42.89,-85.54],KGSP:[34.88,-82.22],KGWX:[33.9,-88.33],KGYX:[43.89,-70.26],KHDC:[30.54,-87.99],KHDX:[33.08,-106.12],KHGX:[29.47,-95.08],KHNX:[36.31,-119.63],KHPX:[36.74,-87.28],KHTX:[34.93,-86.08],KICT:[37.65,-97.44],KICX:[37.59,-112.86],KILN:[39.42,-83.82],KILX:[40.15,-89.34],KIND:[39.7,-86.28],KINX:[36.18,-95.56],KIWA:[33.29,-111.67],KIWX:[41.36,-85.7],KJAX:[30.48,-81.7],KJGX:[32.68,-83.35],KJKL:[37.59,-83.31],KLBB:[33.65,-101.81],KLCH:[30.12,-93.22],KLGX:[47.12,-124.11],KLNX:[41.96,-100.58],KLOT:[41.6,-88.08],KLRX:[40.74,-116.8],KLSX:[38.7,-90.68],KLTX:[33.99,-78.43],KLVX:[37.97,-85.94],KLWX:[38.98,-77.48],KLZK:[34.84,-92.26],KMAF:[31.94,-102.19],KMAX:[42.08,-122.72],KMBX:[48.39,-100.86],KMHX:[34.78,-76.88],KMKX:[42.97,-88.55],KMLB:[28.11,-80.65],KMOB:[30.68,-88.24],KMPX:[44.85,-93.56],KMQT:[46.53,-87.55],KMRX:[36.17,-83.4],KMSX:[47.04,-113.99],KMTX:[41.26,-112.45],KMUX:[37.15,-121.9],KMVX:[47.53,-97.33],KMXX:[32.54,-85.79],KNKX:[32.92,-117.04],KNQA:[35.35,-89.87],KOAX:[41.32,-96.37],KOHX:[36.25,-86.56],KOKX:[40.87,-72.86],KOTX:[47.68,-117.63],KPAH:[37.07,-88.77],KPBZ:[40.53,-80.22],KPDT:[45.69,-118.85],KPOE:[31.16,-92.98],KPUX:[38.46,-104.18],KRAX:[35.66,-78.49],KRGX:[39.75,-119.46],KRIW:[43.07,-108.48],KRLX:[38.31,-81.72],KRTX:[45.71,-122.97],KSFX:[43.1,-112.69],KSGF:[37.23,-93.4],KSHV:[32.45,-93.84],KSJT:[31.37,-100.49],KSOX:[33.82,-117.64],KSRX:[35.29,-94.36],KTBW:[27.71,-82.4],KTFX:[47.46,-111.38],KTLX:[35.33,-97.28],KTWX:[38.99,-96.23],KTYX:[43.76,-75.68],KUDX:[44.12,-102.83],KUEX:[40.32,-98.44],KVAX:[30.89,-83.0],KVBX:[34.84,-120.4],KVNX:[36.74,-98.13],KVTX:[34.41,-119.18],KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]};
@@ -441,9 +563,8 @@ async function selectStation(id, lat, lng, el) {
   document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
   el.classList.add('sel');
   curSite = id; curLat = lat; curLng = lng;
-  document.getElementById('curSite').textContent = id;
   document.getElementById('scName').textContent  = id;
-  document.getElementById('stationCard').style.display = 'block';
+  document.getElementById('stationCard').style.display = 'flex';
   stopPlay();
 
   // Invalidate coords cache for this station (format params may differ)
@@ -579,43 +700,47 @@ function clearRadar() {
 
 // ── Slider ────────────────────────────────────────────────────────────────
 function initSlider() {
-  const track = document.getElementById('track');
-  track.addEventListener('mousedown',  e => { dragging=true;  scrub(e); });
-  window.addEventListener('mousemove', e => { if(dragging) scrub(e); });
-  window.addEventListener('mouseup',   () => { dragging=false; });
-  track.addEventListener('touchstart', e => { dragging=true;  scrub(e.touches[0]); }, {passive:true});
-  window.addEventListener('touchmove', e => { if(dragging) scrub(e.touches[0]); }, {passive:true});
-  window.addEventListener('touchend',  () => { dragging=false; });
-  document.getElementById('b0').onclick    = () => setFrame(0);
-  document.getElementById('b1').onclick    = () => setFrame(frameIdx - 1);
+  const row = document.getElementById('segmentRow');
+  // Drag across segments
+  let isDragging = false;
+  row.addEventListener('mousedown',  e => { isDragging = true; scrubFromEvent(e); });
+  window.addEventListener('mousemove', e => { if (isDragging) scrubFromEvent(e); });
+  window.addEventListener('mouseup',   () => { isDragging = false; });
+  row.addEventListener('touchstart', e => { isDragging = true; scrubFromEvent(e.touches[0]); }, {passive:true});
+  window.addEventListener('touchmove', e => { if (isDragging) scrubFromEvent(e.touches[0]); }, {passive:true});
+  window.addEventListener('touchend',  () => { isDragging = false; });
+
+  document.getElementById('bBack').onclick = () => setFrame(frameIdx - 1);
   document.getElementById('bPlay').onclick = togglePlay;
-  document.getElementById('b2').onclick    = () => setFrame(frameIdx + 1);
-  document.getElementById('b3').onclick    = () => setFrame(frames.length - 1);
+  document.getElementById('bFwd').onclick  = () => setFrame(frameIdx + 1);
 }
 
-function scrub(e) {
+function scrubFromEvent(e) {
   if (!frames.length) return;
-  const r   = document.getElementById('track').getBoundingClientRect();
+  const row = document.getElementById('segmentRow');
+  const r = row.getBoundingClientRect();
   const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
   setFrame(Math.round(pct * (frames.length - 1)));
 }
 
 function buildTicks(n) {
-  const el = document.getElementById('ticks');
-  el.innerHTML = '';
+  const row = document.getElementById('segmentRow');
+  row.innerHTML = '';
   for (let i = 0; i < n; i++) {
-    const pct = n === 1 ? 0 : i / (n-1) * 100;
-    const tk  = document.createElement('div');
-    tk.className = 'tk' + (i === frameIdx ? ' on' : '');
-    tk.id = 'tk-' + i;
-    tk.style.cssText = `left:${pct}%;height:${i%5===0?9:5}px`;
-    el.appendChild(tk);
+    const seg = document.createElement('div');
+    seg.className = 'seg' + (i === frameIdx ? ' seg-active' : ' seg-future');
+    seg.id = 'seg-' + i;
+    seg.addEventListener('click', () => setFrame(i));
+    row.appendChild(seg);
   }
 }
 
 function updateTickLoaded(i) {
-  const t = document.getElementById('tk-' + i);
-  if (t && !t.classList.contains('on')) t.classList.add('loaded');
+  const seg = document.getElementById('seg-' + i);
+  if (seg && !seg.classList.contains('seg-active')) {
+    seg.classList.remove('seg-future');
+    seg.classList.add('seg-past');
+  }
 }
 
 function setFrame(idx, force) {
@@ -624,16 +749,25 @@ function setFrame(idx, force) {
   if (idx === frameIdx && !force) return;
   frameIdx = idx;
 
-  const pct = frames.length === 1 ? 0 : idx / (frames.length-1) * 100;
-  document.getElementById('fill').style.width  = pct + '%';
-  document.getElementById('thumb').style.left  = pct + '%';
-  const lbl = frames[idx]?.label || '';
-  document.getElementById('scSub').textContent = lbl ? `Reflectivity • 0.5° · ${lbl}` : 'Reflectivity • 0.5°';
-  document.querySelectorAll('.tk').forEach((t, i) => {
-    t.classList.toggle('on', i === idx);
-    if (i === idx) t.classList.remove('loaded');
+  // Update segment colors
+  document.querySelectorAll('.seg').forEach((seg, i) => {
+    seg.classList.remove('seg-active', 'seg-past', 'seg-future');
+    if (i === idx) {
+      seg.classList.add('seg-active');
+    } else if (frames[i]?.compactBuf) {
+      seg.classList.add('seg-past');
+    } else {
+      seg.classList.add('seg-future');
+    }
   });
-  document.getElementById('liveTag').style.display = idx === frames.length-1 ? '' : 'none';
+
+  // Update station card subtitle with timestamp
+  const lbl = frames[idx]?.label || '';
+  document.getElementById('scSub').textContent = lbl
+    ? `Reflectivity • 0.5° · ${lbl}`
+    : 'Reflectivity • 0.5°';
+
+  document.getElementById('liveTag').style.display = idx === frames.length - 1 ? '' : 'none';
 
   redrawCurrentFrame();
 
@@ -650,7 +784,8 @@ function togglePlay() { playing ? stopPlay() : startPlay(); }
 function startPlay() {
   if (!frames.length) return;
   playing = true;
-  document.getElementById('bPlay').innerHTML = '⏸';
+  document.getElementById('iconPlay').style.display  = 'none';
+  document.getElementById('iconPause').style.display = '';
   if (frameIdx >= frames.length - 1) setFrame(0, true);
   playTimer = setInterval(() => {
     if (frameIdx >= frames.length - 1) { stopPlay(); return; }
@@ -660,7 +795,8 @@ function startPlay() {
 function stopPlay() {
   playing = false;
   clearInterval(playTimer);
-  document.getElementById('bPlay').innerHTML = '▶';
+  document.getElementById('iconPlay').style.display  = '';
+  document.getElementById('iconPause').style.display = 'none';
 }
 
 function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
