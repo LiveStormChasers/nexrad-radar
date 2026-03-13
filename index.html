@@ -252,39 +252,54 @@ function keyToLabel(key) {
   return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZoneName:'short'});
 }
 
-// ── Viewport-resolution canvas rendering ─────────────────────────────────
-// Matches OpenSnow: for each screen pixel, sample exactly one radar gate.
-// No fixed canvas size — re-renders at actual screen resolution on every zoom/pan.
+// ── Radar canvas layer — lives in Leaflet overlayPane ────────────────────
+// overlayPane is CSS-transformed by Leaflet during pan, so the canvas
+// moves with the map automatically — exactly like OpenSnow's behaviour.
+// We size/position the canvas to the radar's geographic bounds in layer pixels,
+// and re-render on zoomend/moveend.
 
-let renderSeq = 0; // cancel stale renders
+let renderSeq = 0;
 let renderDebounceTimer = null;
 
 function ensureRadarCanvas() {
   if (radarCanvas) return;
   radarCanvas = document.createElement('canvas');
-  radarCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:400';
-  // Attach to map container directly — not overlayPane — so it's unaffected by Leaflet's pan transform
-  map.getContainer().appendChild(radarCanvas);
+  radarCanvas.style.cssText = 'position:absolute;pointer-events:none';
+  map.getPanes().overlayPane.appendChild(radarCanvas);
   radarCtx = radarCanvas.getContext('2d');
-  map.on('moveend zoomend resize', scheduleRender);
+  map.on('zoomend moveend resize', scheduleRender);
 }
 
 function scheduleRender() {
   clearTimeout(renderDebounceTimer);
-  renderDebounceTimer = setTimeout(triggerViewportRender, 60);
+  renderDebounceTimer = setTimeout(positionAndRender, 60);
 }
 
-async function triggerViewportRender() {
+function getRadarRect(maxRangeKm) {
+  const r    = maxRangeKm || 460;
+  const cosL = Math.cos(curLat * Math.PI / 180);
+  const dLat = r / 111.111;
+  const dLng = r / (111.111 * cosL);
+  const nw = map.latLngToLayerPoint([curLat + dLat, curLng - dLng]);
+  const se = map.latLngToLayerPoint([curLat - dLat, curLng + dLng]);
+  return { x: nw.x, y: nw.y, w: se.x - nw.x, h: se.y - nw.y,
+           bounds: { north: curLat+dLat, south: curLat-dLat,
+                     west: curLng-dLng, east: curLng+dLng } };
+}
+
+async function positionAndRender() {
   if (!radarCanvas || !curSite) return;
   const f = frames[frameIdx];
   if (!f || !f.compactBuf) return;
 
   const seq = ++renderSeq;
-  const size = map.getSize();
-  const b    = map.getBounds();
+  const rect = getRadarRect(f.maxRangeKm);
+  const w = Math.round(rect.w), h = Math.round(rect.h);
 
-  radarCanvas.width  = size.x;
-  radarCanvas.height = size.y;
+  radarCanvas.width  = w;
+  radarCanvas.height = h;
+  radarCanvas.style.left = rect.x + 'px';
+  radarCanvas.style.top  = rect.y + 'px';
 
   const msgType = f.msgType === 'compact' ? 'viewport' : 'viewport_level2';
 
@@ -293,13 +308,13 @@ async function triggerViewportRender() {
       buffer: f.compactBuf,
       type: msgType,
       radarLat: curLat, radarLng: curLng,
-      bounds: { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() },
-      width: size.x, height: size.y
+      bounds: rect.bounds,
+      width: w, height: h
     });
 
-    if (seq !== renderSeq) return; // stale — newer render in flight
+    if (seq !== renderSeq) return;
     const imgData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
-    radarCtx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+    radarCtx.clearRect(0, 0, w, h);
     radarCtx.putImageData(imgData, 0, 0);
   } catch(e) {
     console.error('Render error:', e.message);
@@ -311,13 +326,13 @@ function redrawCurrentFrame() {
   const f = frames[frameIdx];
   if (!f.compactBuf) return;
   ensureRadarCanvas();
-  triggerViewportRender();
+  positionAndRender();
 }
 
 function clearRadar() {
   if (!radarCanvas) return;
-  map.getContainer().removeChild(radarCanvas);
-  map.off('moveend zoomend resize', scheduleRender);
+  map.getPanes().overlayPane.removeChild(radarCanvas);
+  map.off('zoomend moveend resize', scheduleRender);
   radarCanvas = null; radarCtx = null;
 }
 
