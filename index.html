@@ -12,9 +12,15 @@
 body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;overflow:hidden}
 
 /* ── Topbar ── */
-#topbar{position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;align-items:center;gap:10px;padding:6px 14px;background:#0d1117ee;border-bottom:1px solid #ffffff0f;backdrop-filter:blur(12px)}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;align-items:center;gap:8px;padding:6px 14px;background:#0d1117ee;border-bottom:1px solid #ffffff0f;backdrop-filter:blur(12px)}
 .logo{font-size:14px;font-weight:800;color:var(--brand);letter-spacing:.06em;white-space:nowrap}
-select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;padding:4px 10px;border-radius:16px;cursor:pointer;outline:none}
+#siteBtn{display:flex;align-items:center;gap:5px;background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;font-weight:700;padding:4px 10px 4px 8px;border-radius:16px;cursor:pointer;outline:none;white-space:nowrap;transition:border-color .15s,color .15s}
+#siteBtn:hover{border-color:var(--brand);color:#fff}
+#siteBtn svg{flex-shrink:0;color:var(--brand)}
+#productToggle{display:flex;background:#0d1420;border:1px solid #253040;border-radius:16px;overflow:hidden;padding:2px}
+.ptab{background:none;border:none;color:#4a6a80;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;cursor:pointer;transition:background .12s,color .12s;white-space:nowrap}
+.ptab.active{background:var(--brand);color:#fff}
+.ptab:not(.active):hover{color:#c8daea}
 .spacer{flex:1}
 #liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
@@ -126,7 +132,14 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 
 <div id="topbar">
   <div class="logo">⚡ NEXRAD</div>
-  <select id="product"><option value="REF">Reflectivity</option></select>
+  <button id="siteBtn" onclick="scrollToSite()">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" stroke="currentColor" stroke-width="2" fill="none" opacity=".4"/></svg>
+    <span id="siteBtnLabel">Select Site</span>
+  </button>
+  <div id="productToggle">
+    <button class="ptab active" data-p="REF">Reflectivity</button>
+    <button class="ptab" data-p="VEL">Velocity</button>
+  </div>
   <div class="spacer"></div>
   <div id="loadStatus"></div>
   <div id="liveTag">● LIVE</div>
@@ -136,7 +149,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 
 <div id="legend">
   <div id="legend-bar"></div>
-  <div id="legend-labels"><span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span></div>
+  <div id="legend-labels"></div>
 </div>
 
 <!-- Bottom controls — matches OpenSnow layout exactly -->
@@ -208,6 +221,7 @@ const STATIONS={KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAM
 // ── State ─────────────────────────────────────────────────────────────────
 let map, mapReady = false, radarLayer = null;
 let curSite = null, curLat = 0, curLng = 0;
+let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -689,7 +703,8 @@ async function selectStation(id, lat, lng) {
   selStationId = id;
   setStationSelected(id);
   curSite = id; curLat = lat; curLng = lng;
-  document.getElementById('scName').textContent  = id;
+  document.getElementById('scName').textContent = id;
+  document.getElementById('siteBtnLabel').textContent = id;
   document.getElementById('stationCard').style.display = 'flex';
   stopPlay();
 
@@ -750,20 +765,21 @@ async function loadStation() {
 // ── Frame loading ─────────────────────────────────────────────────────────
 async function fetchAndProcess(fi) {
   const f = frames[fi];
+  const pParam = curProduct === 'VEL' ? '?p=vel' : '';
   try {
-    const r = await fetch(`/radar/process/${curSite}/${f.key}`);
+    const r = await fetch(`/radar/process/${curSite}/${f.key}${pParam}`);
     if (!r.ok) throw new Error(r.status);
     let buf = await r.arrayBuffer();
     const h = new Uint8Array(buf, 0, 2);
     if (h[0] === 0x1f && h[1] === 0x8b) buf = await gunzip(buf);
     f.compactBuf = buf;
-    f.msgType    = 'compact';
+    f.msgType    = curProduct === 'VEL' ? 'compact_vel' : 'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
   } catch(e) {
     const r2 = await fetch(`/radar/file/${curSite}/${f.key}`);
     if (!r2.ok) throw new Error(r2.status);
     f.compactBuf = await r2.arrayBuffer();
-    f.msgType    = 'level2';
+    f.msgType    = curProduct === 'VEL' ? 'level2_vel' : 'level2';
     f.maxRangeKm = 460;
   }
 }
@@ -776,17 +792,14 @@ function keyToLabel(key) {
 }
 
 // ── Radar rendering ────────────────────────────────────────────────────────
-// Sends compact binary to worker → gets flat RGBA + (first time) corner grid.
-// CustomLayer renders one exact WebGL quad per gate×ray cell.
 async function redrawCurrentFrame() {
   const f = frames[frameIdx];
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
-  const msgType  = f.msgType === 'compact' ? 'compact' : 'level2';
+  // msgType encodes both format (compact/level2) and product (vel suffix)
+  const msgType  = f.msgType || 'compact';
   const cacheKey = `${curSite}-${msgType}`;
 
-  // Only request coords on first frame for this station+format combo.
-  // coordsPending prevents duplicate coord computations on concurrent calls.
   const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
   if (needCoords) coordsPending[cacheKey] = true;
 
@@ -804,7 +817,6 @@ async function redrawCurrentFrame() {
     return;
   }
 
-  // Cache corner grid if returned
   if (result.coords) {
     coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
     delete coordsPending[cacheKey];
@@ -839,6 +851,47 @@ function initSlider() {
   document.getElementById('bBack').onclick = () => setFrame(frameIdx - 1);
   document.getElementById('bPlay').onclick = togglePlay;
   document.getElementById('bFwd').onclick  = () => setFrame(frameIdx + 1);
+
+  // Product toggle
+  document.querySelectorAll('.ptab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.p === curProduct) return;
+      curProduct = btn.dataset.p;
+      document.querySelectorAll('.ptab').forEach(b => b.classList.toggle('active', b.dataset.p === curProduct));
+      updateLegend();
+      // Reload current station with new product
+      if (curSite) {
+        // Flush frame buffers so they get re-fetched with new product
+        frames.forEach(f => { f.compactBuf = null; f.msgType = 'compact'; });
+        // Also invalidate coord cache so fresh grid computed
+        for (const k of Object.keys(coordsCache)) delete coordsCache[k];
+        if (radarLayer) radarLayer.clear();
+        loadStation();
+      }
+    });
+  });
+
+  updateLegend();
+}
+
+function scrollToSite() {
+  // Fly back to currently selected station
+  if (curSite && curLat && curLng) {
+    map.flyTo({ center: [curLng, curLat], zoom: 7, duration: 600 });
+  }
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────
+function updateLegend() {
+  const bar    = document.getElementById('legend-bar');
+  const labels = document.getElementById('legend-labels');
+  if (curProduct === 'VEL') {
+    bar.style.background = 'linear-gradient(to right,#00ff88 0%,#00cc44 18%,#006622 33%,#111 50%,#661111 67%,#cc2222 82%,#ff4444 100%)';
+    labels.innerHTML = '<span>−60</span><span>−30</span><span>0</span><span>+30</span><span>+60 mph</span>';
+  } else {
+    bar.style.background = 'linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)';
+    labels.innerHTML = '<span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span>';
+  }
 }
 
 function scrubFromEvent(e) {
@@ -888,10 +941,11 @@ function setFrame(idx, force) {
   });
 
   // Update station card subtitle with timestamp
+  const prod = curProduct === 'VEL' ? 'Velocity' : 'Reflectivity';
   const lbl = frames[idx]?.label || '';
   document.getElementById('scSub').textContent = lbl
-    ? `Reflectivity • 0.5° · ${lbl}`
-    : 'Reflectivity • 0.5°';
+    ? `${prod} • 0.5° · ${lbl}`
+    : `${prod} • 0.5°`;
 
   document.getElementById('liveTag').style.display = idx === frames.length - 1 ? '' : 'none';
 

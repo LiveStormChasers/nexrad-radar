@@ -255,29 +255,154 @@ function renderLevel2Flat(buf) {
 }
 
 
+// ── Velocity color table (toward=green, away=red, near-zero=black) ────────
+// Range: -130 to +130 knots (NEXRAD vel range), mapped to a diverging scale.
+// Values <= 1 (range folded / no data) are transparent.
+function velToRGBA(mps) {
+  // Convert m/s to mph for display (NEXRAD stores m/s)
+  const mph = mps * 2.23694;
+  const a   = Math.abs(mph);
+  if (a < 2) return [10, 10, 10]; // near-zero: very dark
+  if (mph < 0) {
+    // Toward (negative = toward radar) → green
+    const t = Math.min(1, a / 70);
+    const r = Math.round(0   + t *  0);
+    const g = Math.round(80  + t * 175);
+    const b = Math.round(20  + t *  20);
+    return [r, g, b];
+  } else {
+    // Away (positive = away from radar) → red
+    const t = Math.min(1, a / 70);
+    const r = Math.round(100 + t * 155);
+    const g = Math.round(10  + t *  10);
+    const b = Math.round(10  + t *  10);
+    return [r, g, b];
+  }
+}
+
+// ── Compact velocity renderer ─────────────────────────────────────────────
+// Compact format for VEL: same header/structure, but gate values encode
+// velocity = (val - 129) * 0.5 m/s  (val 0=nodata, 1=range-folded, 2..254=data)
+function renderCompactVelFlat(buf) {
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const src    = gateOffset + r * numGates;
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const val = data[src + g];
+      if (val <= 1) continue; // no data or range-folded
+      const mps = (val - 129) * 0.5;
+      const rgb = velToRGBA(mps);
+      const pi  = dstRow + g * 4;
+      rgba[pi]   = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 220;
+    }
+  }
+  return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
+}
+
+// ── Level-2 velocity renderer ─────────────────────────────────────────────
+function renderLevel2VelFlat(buf) {
+  let data = new Uint8Array(buf);
+  const sig = (data[0] << 8) | data[1];
+  if (sig === 0x425A) {
+    try { data = Bzip2.decompress(data); } catch(e) {}
+  }
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let pos = 24;
+  const NUM_AZ = 720;
+  let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
+
+  while (pos + 4 <= data.length) {
+    const recSizeRaw = dv.getInt32(pos, false);
+    pos += 4;
+    if (recSizeRaw === 0) break;
+    const recSize = Math.abs(recSizeRaw);
+    if (pos + recSize > data.length) break;
+    let chunk;
+    if (recSizeRaw < 0) {
+      chunk = data.slice(pos, pos + recSize);
+    } else {
+      try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); }
+      catch(e) { pos += recSize; continue; }
+    }
+    pos += recSize;
+    let mpos = 0;
+    while (mpos + 28 <= chunk.length) {
+      const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
+      const msgType = chunk[mpos+15];
+      const msgBytes = 12 + segsHW * 2;
+      if (msgType === 31) parseMsg31vel(chunk, mpos + 28);
+      mpos += Math.max(msgBytes, 28);
+    }
+  }
+
+  function parseMsg31vel(chunk, base) {
+    if (base + 68 > chunk.length) return;
+    const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
+    if (dv2.getUint8(22) !== 1) return;
+    const az    = dv2.getFloat32(12, false);
+    const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
+    const nBlocks = dv2.getUint16(30, false);
+    for (let b = 0; b < nBlocks && b < 10; b++) {
+      if (base + 32 + (b+1)*4 > chunk.length) break;
+      const ptr   = dv2.getUint32(32 + b*4, false);
+      const bbase = chunk.byteOffset + base + ptr;
+      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
+      if (chunk[bbase] !== 68) continue;
+      // Look for VEL block (type 'D' + 'VEL')
+      if (chunk[bbase+1]!==86||chunk[bbase+2]!==69||chunk[bbase+3]!==76) continue;
+      const bdv = new DataView(chunk.buffer, bbase);
+      const ng  = bdv.getUint16(8,  false);
+      const fg  = bdv.getUint16(10, false);
+      const gs  = bdv.getUint16(12, false);
+      const scl = bdv.getFloat32(20, false);
+      const ofs = bdv.getFloat32(24, false);
+      if (!radialData) { numGates=ng; firstGateM=fg; gateSizeM=gs; radialData=new Float32Array(NUM_AZ*ng).fill(-999); }
+      const dataOff = base + ptr + 28;
+      for (let g = 0; g < ng; g++) {
+        if (dataOff + g >= chunk.length) break;
+        const rv = chunk[chunk.byteOffset + dataOff + g];
+        radialData[azBin*numGates+g] = rv<=1 ? -999 : (rv-ofs)/scl;
+      }
+      break;
+    }
+  }
+
+  if (!radialData) throw new Error('No elevation-1 VEL data found');
+  const rgba = new Uint8Array(NUM_AZ * numGates * 4);
+  for (let r = 0; r < NUM_AZ; r++) {
+    for (let g = 0; g < numGates; g++) {
+      const mps = radialData[r * numGates + g];
+      if (mps <= -900) continue;
+      const rgb = velToRGBA(mps);
+      const pi  = (r * numGates + g) * 4;
+      rgba[pi]   = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 220;
+    }
+  }
+  const maxRangeM = firstGateM + numGates * gateSizeM;
+  return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM / 1000 };
+}
+
+
 // ── Message handler ───────────────────────────────────────────────────────
 self.onmessage = function(e) {
   const { id, buffer, type, radarLat, radarLon, withCoords,
           nRays, nGates, firstRangeM, gateSizeM } = e.data;
   try {
-    // Stand-alone coordinate grid computation (one-time per station)
     if (type === 'coords') {
       const { lngs, lats } = computeCornerGrid(radarLat, radarLon, nRays, nGates, firstRangeM, gateSizeM);
       self.postMessage({ id, coords: { lngs, lats } }, [lngs.buffer, lats.buffer]);
       return;
     }
 
-    // Per-frame flat RGBA render
     let flat;
-    if (type === 'compact' || type === 'compact_mesh') {
-      flat = renderCompactFlat(buffer);
-    } else if (type === 'level2' || type === 'level2_mesh') {
-      flat = renderLevel2Flat(buffer);
-    } else {
-      self.postMessage({ id, error: 'Unknown type: ' + type }); return;
-    }
+    if      (type === 'compact'     || type === 'compact_mesh') flat = renderCompactFlat(buffer);
+    else if (type === 'compact_vel')                            flat = renderCompactVelFlat(buffer);
+    else if (type === 'level2'      || type === 'level2_mesh')  flat = renderLevel2Flat(buffer);
+    else if (type === 'level2_vel')                             flat = renderLevel2VelFlat(buffer);
+    else { self.postMessage({ id, error: 'Unknown type: ' + type }); return; }
 
-    // Optionally bundle corner grid (first frame only — main thread caches it)
     const transfers = [flat.rgba.buffer];
     let coords = null;
     if (withCoords && radarLat != null && radarLon != null) {
