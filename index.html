@@ -263,7 +263,8 @@ function ensureRadarCanvas() {
   if (radarCanvas) return;
   radarCanvas = document.createElement('canvas');
   radarCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:400';
-  map.getPanes().overlayPane.appendChild(radarCanvas);
+  // Attach to map container directly — not overlayPane — so it's unaffected by Leaflet's pan transform
+  map.getContainer().appendChild(radarCanvas);
   radarCtx = radarCanvas.getContext('2d');
   map.on('moveend zoomend resize', scheduleRender);
 }
@@ -284,7 +285,6 @@ async function triggerViewportRender() {
 
   radarCanvas.width  = size.x;
   radarCanvas.height = size.y;
-  L.DomUtil.setPosition(radarCanvas, map.containerPointToLayerPoint([0, 0]));
 
   const msgType = f.msgType === 'compact' ? 'viewport' : 'viewport_level2';
 
@@ -316,7 +316,7 @@ function redrawCurrentFrame() {
 
 function clearRadar() {
   if (!radarCanvas) return;
-  map.getPanes().overlayPane.removeChild(radarCanvas);
+  map.getContainer().removeChild(radarCanvas);
   map.off('moveend zoomend resize', scheduleRender);
   radarCanvas = null; radarCtx = null;
 }
