@@ -169,10 +169,25 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
+  let foundElevIdx = null; // track the first elevation we find data for
+
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
-    if (dv2.getUint8(22) !== 1) return;
+    const elevIdx = dv2.getUint8(22);
+
+    // REF: accept elevation 1 only (surveillance cut)
+    // VEL: elevation 1 is surveillance-only (no VEL), VEL lives at elevation 2+
+    //      Accept the first elevation we find data for (lowest tilt with VEL)
+    if (product === 'ref') {
+      if (elevIdx !== 1) return;
+    } else {
+      // For VEL: skip elev 1 entirely (it never has VEL in any VCP),
+      // and once we've found data at an elevation, ignore higher ones
+      if (elevIdx < 2) return;
+      if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
+    }
+
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
@@ -192,6 +207,7 @@ function parseLevel2(rawBuf, product = 'ref') {
       if (!radialData) {
         numGates = ng; firstGateM = fg; gateSizeM = gs;
         radialData = new Float32Array(NUM_AZ * ng).fill(-999);
+        foundElevIdx = elevIdx;
       }
       azAngles[azBin] = az;
       const dataOff = base + ptr + 28;
@@ -302,7 +318,7 @@ export async function onRequest(context) {
     const files = []; let m;
     while ((m=re.exec(html))!==null) files.push(m[1]);
     files.sort();
-    return new Response(JSON.stringify(files.slice(-10)), {
+    return new Response(JSON.stringify(files.slice(-24)), {
       headers: { ...CORS, 'Content-Type':'application/json', 'Cache-Control':'no-store' }
     });
   }
