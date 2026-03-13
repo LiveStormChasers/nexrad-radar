@@ -122,36 +122,35 @@ function bzip2Decompress(input){
 // NEXRAD Level-2 parser → extract elevation 1 REF sweep
 // ═══════════════════════════════════════════════════════════════
 
-function parseLevel2(rawBuf) {
-  // Files starting with 'AR2V' are NOT outer-bzip2 wrapped (newer format).
-  // Files starting with 'BZ' are outer-bzip2 wrapped (older format).
+function parseLevel2(rawBuf, product = 'ref') {
   let data = new Uint8Array(rawBuf);
   const sig = (data[0] << 8) | data[1];
-  if (sig === 0x425A) { // 'BZ' — old outer-bzip2 format
+  if (sig === 0x425A) {
     try { data = bzip2Decompress(data); }
     catch(e) { throw new Error('Outer bzip2: ' + e.message); }
   }
-  // else: AR2V* — use raw bytes directly (24-byte header then LDM records)
 
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let pos = 24; // skip archive-II 24-byte header
+  let pos = 24;
 
   const NUM_AZ    = 720;
   const azAngles  = new Float32Array(NUM_AZ);
-  // Initialize azAngles to computed nominal values
   for (let i = 0; i < NUM_AZ; i++) azAngles[i] = i * 0.5;
 
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
 
+  // Block identifier: 'REF' = [82,69,70], 'VEL' = [86,69,76]
+  const blockId = product === 'vel'
+    ? [86, 69, 76]  // VEL
+    : [82, 69, 70]; // REF
+
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
     pos += 4;
     if (recSizeRaw === 0) break;
-
     const recSize = Math.abs(recSizeRaw);
     if (pos + recSize > data.length) break;
-
     let chunk;
     if (recSizeRaw < 0) {
       chunk = data.slice(pos, pos + recSize);
@@ -160,15 +159,12 @@ function parseLevel2(rawBuf) {
       catch(e) { pos += recSize; continue; }
     }
     pos += recSize;
-
     let mpos = 0;
     while (mpos + 28 <= chunk.length) {
       const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
       const msgType = chunk[mpos+15];
       const msgBytes = 12 + segsHW * 2;
-
       if (msgType === 31) parseMsg31(chunk, mpos + 28);
-
       mpos += Math.max(msgBytes, 28);
     }
   }
@@ -176,36 +172,27 @@ function parseLevel2(rawBuf) {
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
-
-    if (dv2.getUint8(22) !== 1) return; // elevation 1 only
-
+    if (dv2.getUint8(22) !== 1) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
-
     const nBlocks = dv2.getUint16(30, false);
-    if (nBlocks < 1) return;
-
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
-
-      if (chunk[bbase] !== 68) continue; // type 'D'
-      if (chunk[bbase+1]!==82||chunk[bbase+2]!==69||chunk[bbase+3]!==70) continue; // 'REF'
-
+      if (chunk[bbase] !== 68) continue;
+      if (chunk[bbase+1] !== blockId[0] || chunk[bbase+2] !== blockId[1] || chunk[bbase+3] !== blockId[2]) continue;
       const bdv = new DataView(chunk.buffer, bbase);
       const ng  = bdv.getUint16(8,  false);
       const fg  = bdv.getUint16(10, false);
       const gs  = bdv.getUint16(12, false);
       const scl = bdv.getFloat32(20, false);
       const ofs = bdv.getFloat32(24, false);
-
       if (!radialData) {
         numGates = ng; firstGateM = fg; gateSizeM = gs;
         radialData = new Float32Array(NUM_AZ * ng).fill(-999);
       }
-
       azAngles[azBin] = az;
       const dataOff = base + ptr + 28;
       for (let g = 0; g < ng; g++) {
@@ -217,8 +204,8 @@ function parseLevel2(rawBuf) {
     }
   }
 
-  if (!radialData) throw new Error('No elevation-1 REF data found');
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ };
+  if (!radialData) throw new Error(`No elevation-1 ${product.toUpperCase()} data found`);
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -226,7 +213,7 @@ function parseLevel2(rawBuf) {
 // ═══════════════════════════════════════════════════════════════
 
 function encodeCompact(parsed) {
-  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ } = parsed;
+  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product } = parsed;
   const maxRangeKm = (firstGateM + numGates * gateSizeM) / 1000;
 
   const headerSize = 24;
@@ -247,13 +234,29 @@ function encodeCompact(parsed) {
     dv.setFloat32(headerSize + i*4, azAngles[i], true);
 
   const gateStart = headerSize + azSize;
-  for (let i = 0; i < NUM_AZ * numGates; i++) {
-    const dbz = radialData[i];
-    if (dbz < -32) { u8[gateStart + i] = 0; continue; }
-    let idx = Math.round((dbz + 32) * 2);
-    if (idx < 0) idx = 0;
-    if (idx > 253) idx = 253;
-    u8[gateStart + i] = idx + 1;
+
+  if (product === 'vel') {
+    // Velocity encoding: val = clamp(round(mps / 0.5) + 129, 2, 254)
+    // val 0 = no data, val 1 = range-folded, val 2..254 = data
+    // decode: mps = (val - 129) * 0.5
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const mps = radialData[i];
+      if (mps < -900) { u8[gateStart + i] = 0; continue; }
+      let idx = Math.round(mps / 0.5) + 129;
+      if (idx < 2)   idx = 2;
+      if (idx > 254) idx = 254;
+      u8[gateStart + i] = idx;
+    }
+  } else {
+    // Reflectivity encoding: val = clamp(round((dBZ + 32) * 2) + 1, 1, 254)
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const dbz = radialData[i];
+      if (dbz < -32) { u8[gateStart + i] = 0; continue; }
+      let idx = Math.round((dbz + 32) * 2);
+      if (idx < 0)   idx = 0;
+      if (idx > 253) idx = 253;
+      u8[gateStart + i] = idx + 1;
+    }
   }
   return u8;
 }
@@ -316,11 +319,13 @@ export async function onRequest(context) {
 
   // PROCESS — the fast path
   if (path.startsWith('process/')) {
-    const rest = path.slice(8); // KXXX/filename.bz2
+    const rest    = path.slice(8); // KXXX/filename.bz2
+    const product = url.searchParams.get('p') === 'vel' ? 'vel' : 'ref';
+    const cacheId = product === 'vel' ? `v1-vel/${rest}` : `v1/${rest}`;
 
     // Check CF edge cache
     const cache    = caches.default;
-    const cacheKey = new Request(`https://radar-cache.internal/v1/${rest}`);
+    const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
     const cached   = await cache.match(cacheKey);
     if (cached) {
       const h = new Headers(cached.headers);
@@ -341,7 +346,7 @@ export async function onRequest(context) {
 
     // Parse + encode
     let parsed;
-    try { parsed = parseLevel2(rawBuf); }
+    try { parsed = parseLevel2(rawBuf, product); }
     catch(e) { return new Response('Parse: '+e.message, { status:500, headers:CORS }); }
 
     const compact = encodeCompact(parsed);
@@ -353,6 +358,7 @@ export async function onRequest(context) {
       'Content-Encoding': 'gzip',
       'Cache-Control':    'public, max-age=604800',
       'X-Cache':          'MISS',
+      'X-Product':        product,
       'X-Compact-Bytes':  String(compact.byteLength),
       'X-Gzip-Bytes':     String(gzipped.byteLength),
     };
