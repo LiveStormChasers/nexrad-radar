@@ -154,6 +154,9 @@ function renderCompact(compactBuf, sz) {
 
       const val = data[gateOffset + azBin * numGates + gateIdx];
       if (val === 0) continue; // no data
+      // Threshold: skip anything below 1 dBZ (same as OpenSnow)
+      // palIdx = val-1, dBZ = palIdx/2 - 32 → val<=66 means dBZ<1
+      if (val <= 66) continue;
 
       const pi = (py * sz + px) * 4;
       const slot = val * 4; // val is palIdx+1, so slot = (palIdx+1)*4
@@ -266,7 +269,7 @@ function renderLevel2(parsed, sz) {
       const gateIdx = Math.floor((rM-firstGateM)/gateSizeM);
       if (gateIdx>=numGates) continue;
       const dbz = radialData[azBin*numGates+gateIdx];
-      if (dbz<-32) continue;
+      if (dbz < 1) continue; // threshold matches OpenSnow
       let idx = Math.round((dbz+32)*2);
       if (idx<0) idx=0; if(idx>=PAL_SIZE) idx=PAL_SIZE-1;
       const pi = (py*sz+px)*4;
