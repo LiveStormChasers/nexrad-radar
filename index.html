@@ -110,6 +110,13 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 #bPlay:hover{background:var(--brand-hover)}
 #bPlay:active{transform:scale(0.9)}
 
+/* ── Site pills on map ── */
+.site-pill{display:inline-flex;align-items:center;gap:3px;background:#0b1520cc;border:1.5px solid #3b9afa33;border-radius:16px;padding:2px 8px 2px 5px;font-size:10px;font-weight:700;color:#7aaabb;cursor:pointer;backdrop-filter:blur(4px);transition:all .1s;box-shadow:0 1px 4px #00000066;white-space:nowrap;pointer-events:auto}
+.site-pill:hover{border-color:#3b9afaaa;color:#fff;background:#1a2a3ccc}
+.site-pill.sel{border-color:var(--brand);color:#fff;background:#3b9afa18;box-shadow:0 0 8px #3b9afa44}
+.site-dot{width:5px;height:5px;border-radius:50%;background:#3b9afa55;flex-shrink:0;transition:background .1s}
+.site-pill.sel .site-dot{background:var(--brand)}
+
 /* ── Mapbox overrides ── */
 .mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
 .mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
@@ -504,6 +511,7 @@ window.onload = () => {
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [-96, 38],
     zoom: 5,
+    projection: 'mercator',   // ← CRITICAL: globe projection (v3 default) breaks custom Mercator layers
     attributionControl: { compact: true }
   });
 
@@ -558,95 +566,29 @@ window.onload = () => {
     radarLayer = new RadarCustomLayer();
     map.addLayer(radarLayer, 'road-label-simple');  // first symbol layer in dark-v11
 
-    // ── Station markers as native GL source+layers (true geo-locking) ─────
-    addStationLayers();
+    // ── Station pill markers (DOM-based Mapbox Markers — true geo-locked) ──
+    addStationMarkers();
     initSlider();
   });
 };
 
-// ── Station markers as Mapbox GL native source + circle + symbol layers ───
-// These are rendered inside the WebGL pipeline — perfectly geo-locked,
-// no DOM floating, no lag on pan/zoom.
-let selectedSiteId = null;
-
-function addStationLayers() {
-  // Build GeoJSON feature collection from STATIONS dict
-  const features = Object.entries(STATIONS).map(([id, [lat, lng]]) => ({
-    type: 'Feature',
-    id: id,   // used for feature-state
-    geometry: { type: 'Point', coordinates: [lng, lat] },
-    properties: { id, lat, lng }
-  }));
-
-  map.addSource('stations', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features },
-    promoteId: 'id'   // lets us use feature-state by station id
-  });
-
-  // Dot layer — glowing circle
-  map.addLayer({
-    id: 'stations-dot',
-    type: 'circle',
-    source: 'stations',
-    paint: {
-      'circle-radius': ['case', ['boolean', ['feature-state', 'selected'], false], 7, 4],
-      'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false],
-        '#3b9afa', 'rgba(59,154,250,0.4)'],
-      'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 2, 1],
-      'circle-stroke-color': '#3b9afa',
-      'circle-blur': 0
-    }
-  });
-
-  // Label layer — station ID text below dot
-  map.addLayer({
-    id: 'stations-label',
-    type: 'symbol',
-    source: 'stations',
-    layout: {
-      'text-field': ['get', 'id'],
-      'text-size': 9,
-      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
-      'text-offset': [0, 1.0],
-      'text-anchor': 'top',
-      'text-allow-overlap': false,
-      'text-ignore-placement': false
-    },
-    paint: {
-      'text-color': ['case', ['boolean', ['feature-state', 'selected'], false],
-        '#ffffff', 'rgba(122,170,187,0.85)'],
-      'text-halo-color': 'rgba(0,0,0,0.7)',
-      'text-halo-width': 1.5
-    }
-  });
-
-  // Click handler
-  map.on('click', 'stations-dot', (e) => {
-    const props = e.features[0].properties;
-    selectStation(props.id, props.lat, props.lng);
-  });
-  map.on('click', 'stations-label', (e) => {
-    const props = e.features[0].properties;
-    selectStation(props.id, props.lat, props.lng);
-  });
-
-  // Pointer cursor on hover
-  map.on('mouseenter', 'stations-dot',   () => { map.getCanvas().style.cursor = 'pointer'; });
-  map.on('mouseleave', 'stations-dot',   () => { map.getCanvas().style.cursor = ''; });
-  map.on('mouseenter', 'stations-label', () => { map.getCanvas().style.cursor = 'pointer'; });
-  map.on('mouseleave', 'stations-label', () => { map.getCanvas().style.cursor = ''; });
+// ── Station pill markers ───────────────────────────────────────────────────
+function addStationMarkers() {
+  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
+    const el = document.createElement('div');
+    el.className = 'site-pill';
+    el.innerHTML = `<span class="site-dot"></span>${id}`;
+    el.addEventListener('click', () => selectStation(id, lat, lng, el));
+    new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat])
+      .addTo(map);
+  }
 }
 
 // ── Station selection ─────────────────────────────────────────────────────
-async function selectStation(id, lat, lng) {
-  // Update GL feature-state (deselect old, select new)
-  if (selectedSiteId) {
-    map.setFeatureState({ source: 'stations', id: selectedSiteId }, { selected: false });
-  }
-  selectedSiteId = id;
-  map.setFeatureState({ source: 'stations', id }, { selected: true });
-
+async function selectStation(id, lat, lng, el) {
+  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
+  if (el) el.classList.add('sel');
   curSite = id; curLat = lat; curLng = lng;
   document.getElementById('scName').textContent  = id;
   document.getElementById('stationCard').style.display = 'flex';
