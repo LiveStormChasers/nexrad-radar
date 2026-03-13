@@ -1,10 +1,10 @@
-// radarWorker.js — viewport-resolution NEXRAD renderer
-// Matches OpenSnow's approach: for each screen pixel, sample exactly one gate.
-// No fixed canvas size, no scaling artifacts.
+// radarWorker.js — NEXRAD square polar renderer for MapLibre canvas source
+// Renders a square image centered on the radar station.
+// MapLibre georferences it via canvas source coordinates — zero pan flicker.
 
 importScripts('bzip2.js');
 
-// ── RadarScope BR palette ─────────────────────────────────────────────────
+// ── RadarScope BR palette (254 stops, -32 to 94.5 dBZ) ───────────────────
 const PAL_DATA = [
 [115,77,172],[115,78,168],[115,79,165],[115,81,162],[116,82,158],[116,84,155],
 [116,85,152],[117,86,148],[117,88,145],[117,89,142],[118,91,138],[118,92,135],
@@ -50,9 +50,11 @@ const PAL_DATA = [
 [150,80,56],[145,70,48],[140,60,40],[135,50,32],[130,40,24],[125,30,16],
 [120,20,8],[115,10,1]
 ];
+const PAL_SIZE = PAL_DATA.length;
 
+// Flat RGBA lookup: val=0 → transparent, val=1..254 → PAL_DATA[val-1]
 const RGBA_PAL = new Uint8Array(255 * 4);
-for (let i = 0; i < PAL_DATA.length; i++) {
+for (let i = 0; i < PAL_SIZE; i++) {
   const slot = (i + 1) * 4;
   RGBA_PAL[slot]   = PAL_DATA[i][0];
   RGBA_PAL[slot+1] = PAL_DATA[i][1];
@@ -60,28 +62,7 @@ for (let i = 0; i < PAL_DATA.length; i++) {
   RGBA_PAL[slot+3] = 255;
 }
 
-const PALETTE = new Uint8Array(PAL_DATA.length * 3);
-for (let i = 0; i < PAL_DATA.length; i++) {
-  PALETTE[i*3]=PAL_DATA[i][0]; PALETTE[i*3+1]=PAL_DATA[i][1]; PALETTE[i*3+2]=PAL_DATA[i][2];
-}
-const PAL_SIZE = PAL_DATA.length;
-
-// ── Parse compact binary header only (no render) ──────────────────────────
-function parseCompact(compactBuf) {
-  const data = new Uint8Array(compactBuf);
-  const dv   = new DataView(compactBuf);
-  if (dv.getUint32(0, true) !== 0x52444152) throw new Error('Bad compact magic');
-  const numAz       = dv.getUint32(4,  true);
-  const numGates    = dv.getUint32(8,  true);
-  const firstRangeM = dv.getFloat32(12, true);
-  const gateSizeM   = dv.getFloat32(16, true);
-  const maxRangeKm  = dv.getFloat32(20, true);
-  const azOffset    = 24;
-  const gateOffset  = azOffset + numAz * 4;
-  return { data, dv, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset };
-}
-
-// ── Despeckle for arbitrary w×h canvas ───────────────────────────────────
+// ── Despeckle — 2 passes, 8-neighbor, min 3 neighbors ────────────────────
 function despeckle(pixels, w, h) {
   const n = w * h;
   const mask = new Uint8Array(n);
@@ -93,7 +74,7 @@ function despeckle(pixels, w, h) {
       for (let x = 1; x < w - 1; x++) {
         if (!src[y*w+x]) continue;
         const nb = src[(y-1)*w+(x-1)] + src[(y-1)*w+x] + src[(y-1)*w+(x+1)]
-                 + src[y*w+(x-1)]                       + src[y*w+(x+1)]
+                 + src[ y   *w+(x-1)]                   + src[ y   *w+(x+1)]
                  + src[(y+1)*w+(x-1)] + src[(y+1)*w+x] + src[(y+1)*w+(x+1)];
         if (nb >= 3) out[y*w+x] = 1;
       }
@@ -101,57 +82,64 @@ function despeckle(pixels, w, h) {
     return out;
   }
 
-  const result = pass(pass(mask));
+  const keep = pass(pass(mask));
   for (let i = 0; i < n; i++) {
-    if (!result[i]) pixels[i*4+3] = 0;
+    if (!keep[i]) pixels[i*4+3] = 0;
   }
 }
 
-// ── VIEWPORT RENDER — sample one gate per screen pixel ───────────────────
-// This is the main render path. Matches OpenSnow's per-pixel approach.
-function renderViewport(compactBuf, radarLat, radarLng, bounds, width, height) {
-  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(compactBuf);
+// ── Compact binary parser ─────────────────────────────────────────────────
+function parseCompact(buf) {
+  const data = new Uint8Array(buf);
+  const dv   = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x52444152) throw new Error('Bad magic');
+  const numAz       = dv.getUint32(4,  true);
+  const numGates    = dv.getUint32(8,  true);
+  const firstRangeM = dv.getFloat32(12, true);
+  const gateSizeM   = dv.getFloat32(16, true);
+  const maxRangeKm  = dv.getFloat32(20, true);
+  const gateOffset  = 24 + numAz * 4;
+  return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset };
+}
+
+// ── Square polar render from compact binary ───────────────────────────────
+function renderCompactSquare(buf, size) {
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
   const maxRangeM = maxRangeKm * 1000;
-  const pixels    = new Uint8ClampedArray(width * height * 4);
+  const pixels    = new Uint8ClampedArray(size * size * 4);
+  const half      = size / 2;
+  const mPerPx    = maxRangeM / half;
 
-  // Pre-compute per-column lng offset in km (x direction)
-  const cosLat = Math.cos(radarLat * Math.PI / 180);
-  const lngSpan = bounds.east - bounds.west;
-  const latSpan = bounds.north - bounds.south;
-
-  for (let py = 0; py < height; py++) {
-    const lat  = bounds.north - (py / height) * latSpan;
-    const dlat = (lat - radarLat) * 111.111; // km north
-    for (let px = 0; px < width; px++) {
-      const lng  = bounds.west + (px / width) * lngSpan;
-      const dlng = (lng - radarLng) * 111.111 * cosLat; // km east
-
-      const rM = Math.sqrt(dlat*dlat + dlng*dlng) * 1000; // meters
+  for (let py = 0; py < size; py++) {
+    const dyM = (half - py) * mPerPx;
+    for (let px = 0; px < size; px++) {
+      const dxM = (px - half) * mPerPx;
+      const rM  = Math.sqrt(dxM*dxM + dyM*dyM);
       if (rM < firstRangeM || rM > maxRangeM) continue;
 
-      let az = Math.atan2(dlng, dlat) * 180 / Math.PI;
+      let az = Math.atan2(dxM, dyM) * 180 / Math.PI;
       if (az < 0) az += 360;
       const azBin   = Math.floor(az * 2) % numAz;
       const gateIdx = Math.floor((rM - firstRangeM) / gateSizeM);
       if (gateIdx >= numGates) continue;
 
       const val = data[gateOffset + azBin * numGates + gateIdx];
-      if (val === 0 || val <= 70) continue; // threshold: skip < ~3 dBZ
+      if (val === 0 || val <= 70) continue; // ~3 dBZ threshold
 
-      const pi   = (py * width + px) * 4;
+      const pi   = (py * size + px) * 4;
       const slot = val * 4;
       pixels[pi]   = RGBA_PAL[slot];
       pixels[pi+1] = RGBA_PAL[slot+1];
       pixels[pi+2] = RGBA_PAL[slot+2];
-      pixels[pi+3] = RGBA_PAL[slot+3];
+      pixels[pi+3] = 255;
     }
   }
 
-  despeckle(pixels, width, height);
-  return { pixels, width, height, maxRangeKm };
+  despeckle(pixels, size, size);
+  return { pixels, maxRangeKm };
 }
 
-// ── FALLBACK: full polar render (for slow Level-2 path) ──────────────────
+// ── Level-2 parser ────────────────────────────────────────────────────────
 function parseLevel2(raw) {
   let data;
   try { data = Bzip2.decompress(new Uint8Array(raw)); }
@@ -160,8 +148,7 @@ function parseLevel2(raw) {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24;
   const NUM_AZ = 720;
-  let radialData = null;
-  let numGates = 0, firstGateM = 0, gateSizeM = 0;
+  let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
 
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
@@ -177,6 +164,7 @@ function parseLevel2(raw) {
       catch(e) { pos += recSize; continue; }
     }
     pos += recSize;
+
     let mpos = 0;
     while (mpos + 28 <= chunk.length) {
       const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
@@ -196,7 +184,7 @@ function parseLevel2(raw) {
     const nBlocks = dv2.getUint16(30, false);
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
-      const ptr  = dv2.getUint32(32 + b*4, false);
+      const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
       if (chunk[bbase] !== 68) continue;
@@ -211,8 +199,8 @@ function parseLevel2(raw) {
       const dataOff = base + ptr + 28;
       for (let g = 0; g < ng; g++) {
         if (dataOff + g >= chunk.length) break;
-        const raw2 = chunk[chunk.byteOffset + dataOff + g];
-        radialData[azBin*numGates+g] = raw2<=1 ? -999 : (raw2-ofs)/scl;
+        const rv = chunk[chunk.byteOffset + dataOff + g];
+        radialData[azBin*numGates+g] = rv<=1 ? -999 : (rv-ofs)/scl;
       }
       break;
     }
@@ -221,65 +209,65 @@ function parseLevel2(raw) {
   return { radialData, numGates, firstGateM, gateSizeM, NUM_AZ };
 }
 
-// Level-2 viewport render (for slow fallback path)
-function renderViewportLevel2(parsed, radarLat, radarLng, bounds, width, height) {
-  const { radialData, numGates, firstGateM, gateSizeM, NUM_AZ } = parsed;
-  if (!radialData) return null;
+// ── Square polar render from Level-2 ─────────────────────────────────────
+function renderLevel2Square(buf, size) {
+  const parsed = parseLevel2(buf);
+  if (!parsed || !parsed.radialData) throw new Error('No REF data found');
+  const { radialData, numGates, firstGateM, gateSizeM } = parsed;
   const maxRangeM  = firstGateM + numGates * gateSizeM;
   const maxRangeKm = maxRangeM / 1000;
-  const pixels = new Uint8ClampedArray(width * height * 4);
-  const cosLat = Math.cos(radarLat * Math.PI / 180);
-  const lngSpan = bounds.east - bounds.west;
-  const latSpan = bounds.north - bounds.south;
+  const pixels     = new Uint8ClampedArray(size * size * 4);
+  const half       = size / 2;
+  const mPerPx     = maxRangeM / half;
+  const NUM_AZ     = parsed.NUM_AZ;
 
-  for (let py = 0; py < height; py++) {
-    const lat  = bounds.north - (py / height) * latSpan;
-    const dlat = (lat - radarLat) * 111.111;
-    for (let px = 0; px < width; px++) {
-      const lng  = bounds.west + (px / width) * lngSpan;
-      const dlng = (lng - radarLng) * 111.111 * cosLat;
-      const rM = Math.sqrt(dlat*dlat + dlng*dlng) * 1000;
+  for (let py = 0; py < size; py++) {
+    const dyM = (half - py) * mPerPx;
+    for (let px = 0; px < size; px++) {
+      const dxM = (px - half) * mPerPx;
+      const rM  = Math.sqrt(dxM*dxM + dyM*dyM);
       if (rM < firstGateM || rM > maxRangeM) continue;
-      let az = Math.atan2(dlng, dlat) * 180 / Math.PI;
+
+      let az = Math.atan2(dxM, dyM) * 180 / Math.PI;
       if (az < 0) az += 360;
       const azBin   = Math.floor(az * 2) % NUM_AZ;
       const gateIdx = Math.floor((rM - firstGateM) / gateSizeM);
       if (gateIdx >= numGates) continue;
+
       const dbz = radialData[azBin*numGates+gateIdx];
       if (dbz < 3) continue;
-      let idx = Math.round((dbz+32)*2);
-      if (idx<0) idx=0; if(idx>=PAL_SIZE) idx=PAL_SIZE-1;
-      const pi = (py*width+px)*4;
-      pixels[pi]=PALETTE[idx*3]; pixels[pi+1]=PALETTE[idx*3+1]; pixels[pi+2]=PALETTE[idx*3+2]; pixels[pi+3]=255;
+      let idx = Math.round((dbz + 32) * 2);
+      if (idx < 0) idx = 0;
+      if (idx >= PAL_SIZE) idx = PAL_SIZE - 1;
+
+      const pi = (py*size+px)*4;
+      pixels[pi]   = PAL_DATA[idx][0];
+      pixels[pi+1] = PAL_DATA[idx][1];
+      pixels[pi+2] = PAL_DATA[idx][2];
+      pixels[pi+3] = 255;
     }
   }
-  despeckle(pixels, width, height);
-  return { pixels, width, height, maxRangeKm };
+
+  despeckle(pixels, size, size);
+  return { pixels, maxRangeKm };
 }
 
 // ── Message handler ───────────────────────────────────────────────────────
 self.onmessage = function(e) {
-  const { id, buffer, type, radarLat, radarLng, bounds, width, height } = e.data;
+  const { id, buffer, type, canvasSize } = e.data;
+  const size = canvasSize || 2048;
 
   try {
     let result;
-
-    if (type === 'viewport') {
-      // Main path: viewport-resolution render from compact binary
-      result = renderViewport(buffer, radarLat, radarLng, bounds, width, height);
-    } else if (type === 'viewport_level2') {
-      // Slow fallback: viewport-resolution render from raw Level-2
-      const parsed = parseLevel2(buffer);
-      if (!parsed || !parsed.radialData) {
-        self.postMessage({ id, error: 'No REF data found' }); return;
-      }
-      result = renderViewportLevel2(parsed, radarLat, radarLng, bounds, width, height);
+    if (type === 'compact') {
+      result = renderCompactSquare(buffer, size);
+    } else if (type === 'level2') {
+      result = renderLevel2Square(buffer, size);
     } else {
       self.postMessage({ id, error: 'Unknown type: ' + type }); return;
     }
-
-    if (!result) { self.postMessage({ id, error: 'Render failed' }); return; }
-    self.postMessage({ id, rendered: result }, [result.pixels.buffer]);
+    const pixels = result.pixels;
+    self.postMessage({ id, rendered: { pixels, maxRangeKm: result.maxRangeKm } }, [pixels.buffer]);
   } catch(err) {
     self.postMessage({ id, error: err.message });
   }
