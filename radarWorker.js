@@ -60,7 +60,7 @@ const PAL_DATA = [
 [120,20,8],[115,10,1]
 ];
 
-// Pre-build RGBA flat palette (index → 4 bytes including alpha=230)
+// Pre-build RGBA flat palette (index → 4 bytes including alpha=255)
 // Index 0 = transparent (no data), indices 1..254 → palette entry 0..253
 const RGBA_PAL = new Uint8Array(255 * 4); // slot 0 = no-data (transparent)
 for (let i = 0; i < PAL_DATA.length; i++) {
@@ -68,7 +68,7 @@ for (let i = 0; i < PAL_DATA.length; i++) {
   RGBA_PAL[slot]   = PAL_DATA[i][0];
   RGBA_PAL[slot+1] = PAL_DATA[i][1];
   RGBA_PAL[slot+2] = PAL_DATA[i][2];
-  RGBA_PAL[slot+3] = 230;
+  RGBA_PAL[slot+3] = 255;
 }
 
 // Also keep flat palette for slow-path dBZ → index lookup
@@ -273,7 +273,7 @@ function renderLevel2(parsed, sz) {
       let idx = Math.round((dbz+32)*2);
       if (idx<0) idx=0; if(idx>=PAL_SIZE) idx=PAL_SIZE-1;
       const pi = (py*sz+px)*4;
-      pixels[pi]=PALETTE[idx*3]; pixels[pi+1]=PALETTE[idx*3+1]; pixels[pi+2]=PALETTE[idx*3+2]; pixels[pi+3]=230;
+      pixels[pi]=PALETTE[idx*3]; pixels[pi+1]=PALETTE[idx*3+1]; pixels[pi+2]=PALETTE[idx*3+2]; pixels[pi+3]=255;
     }
   }
   despeckle(pixels, sz);
