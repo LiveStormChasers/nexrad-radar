@@ -337,10 +337,14 @@ function renderLevel2VelFlat(buf) {
     }
   }
 
+  let foundElevIdx = null;
+
   function parseMsg31vel(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
-    if (dv2.getUint8(22) !== 1) return;
+    const elevIdx = dv2.getUint8(22);
+    if (elevIdx < 2) return; // VEL never on elev 1 (surveillance cut)
+    if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
@@ -358,7 +362,11 @@ function renderLevel2VelFlat(buf) {
       const gs  = bdv.getUint16(12, false);
       const scl = bdv.getFloat32(20, false);
       const ofs = bdv.getFloat32(24, false);
-      if (!radialData) { numGates=ng; firstGateM=fg; gateSizeM=gs; radialData=new Float32Array(NUM_AZ*ng).fill(-999); }
+      if (!radialData) {
+        numGates=ng; firstGateM=fg; gateSizeM=gs;
+        radialData=new Float32Array(NUM_AZ*ng).fill(-999);
+        foundElevIdx = elevIdx;
+      }
       const dataOff = base + ptr + 28;
       for (let g = 0; g < ng; g++) {
         if (dataOff + g >= chunk.length) break;
