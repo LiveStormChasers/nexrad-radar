@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NEXRAD Live Radar</title>
-<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
-<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#070a0d;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -44,11 +44,11 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 .site-pill.sel{border-color:#38d9f5;color:#fff;background:#38d9f518;box-shadow:0 0 8px #38d9f533}
 .site-dot{width:5px;height:5px;border-radius:50%;background:#38d9f566;flex-shrink:0}
 .site-pill.sel .site-dot{background:#38d9f5}
-.maplibregl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
-.maplibregl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
-.maplibregl-ctrl-group button:hover{background:#1a2535!important}
-.maplibregl-ctrl-attrib{background:#0d111799!important;color:#4a6a80!important;font-size:9px}
-.maplibregl-ctrl-attrib a{color:#4a8090!important}
+.mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
+.mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
+.mapboxgl-ctrl-group button:hover{background:#1a2535!important}
+.mapboxgl-ctrl-attrib{background:#0d111799!important;color:#4a6a80!important;font-size:9px}
+.mapboxgl-ctrl-attrib a{color:#4a8090!important}
 </style>
 </head>
 <body>
@@ -104,15 +104,16 @@ const RADAR_CTX    = RADAR_CANVAS.getContext('2d');
 
 // ── Map init ──────────────────────────────────────────────────────────────
 window.onload = () => {
-  map = new maplibregl.Map({
+  mapboxgl.accessToken = 'pk.eyJ1IjoibGl2ZXN0b3JtY2hhc2VycyIsImEiOiJjbWsxY3RmcWIwMmNxM2NxNDNpZGJ6bWMwIn0.5GVRTGf4n9uBL_htx92oRQ';
+  map = new mapboxgl.Map({
     container: 'map',
-    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    style: 'mapbox://styles/mapbox/dark-v11',
     center: [-96, 38],
     zoom: 5,
     attributionControl: { compact: true }
   });
 
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left');
 
   map.on('load', () => {
     mapReady = true;
@@ -121,7 +122,7 @@ window.onload = () => {
       const wrap = document.createElement('div');
       wrap.innerHTML = `<div class="site-pill" id="pill-${id}"><div class="site-dot"></div>${id}</div>`;
       wrap.firstChild.addEventListener('click', () => selectSite(id));
-      new maplibregl.Marker({ element: wrap, anchor: 'left' }).setLngLat([lng, lat]).addTo(map);
+      new mapboxgl.Marker({ element: wrap, anchor: 'left' }).setLngLat([lng, lat]).addTo(map);
     }
   });
 
