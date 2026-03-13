@@ -18,8 +18,8 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
 #loadStatus{font-size:10px;color:#4a6a80}
 #map{flex:1;position:relative;background:#070a0d}
-#legend{position:absolute;bottom:60px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
-#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(115,77,172) 0%,rgb(125,121,69) 12%,rgb(54,78,130) 32%,rgb(45,182,78) 41%,rgb(252,253,0) 50%,rgb(250,148,0) 57%,rgb(249,35,11) 65%,rgb(202,153,180) 73%,rgb(154,36,224) 81%,rgb(132,253,255) 88%,rgb(115,10,1) 100%)}
+#legend{position:fixed;bottom:60px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
+#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
 #legend-labels{display:flex;justify-content:space-between;font-size:8px;color:#4a6a80;width:200px}
 #sliderBar{flex-shrink:0;background:#111518;border-top:1px solid #ffffff08}
 #sliderRow{display:flex;align-items:center;padding:0}
@@ -28,7 +28,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 .cb:hover,.cb.on{color:#38d9f5}
 #bPlay{width:36px;height:36px;border-radius:50%;background:#38d9f5;color:#000;font-size:14px;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;transition:background .15s;flex-shrink:0}
 #bPlay:hover{background:#5ee8ff}
-#stationCard{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:900;background:#1a2030ee;border:1px solid #ffffff14;border-bottom:none;border-radius:12px 12px 0 0;padding:7px 16px;display:none;backdrop-filter:blur(12px);white-space:nowrap}
+#stationCard{position:fixed;bottom:0;left:50%;transform:translateX(-50%);z-index:900;background:#1a2030ee;border:1px solid #ffffff14;border-bottom:none;border-radius:12px 12px 0 0;padding:7px 16px;display:none;backdrop-filter:blur(12px);white-space:nowrap}
 #stationCard .sc-name{font-size:13px;font-weight:600;color:#e8f0f8}
 #stationCard .sc-sub{font-size:11px;color:#4a6a80;margin-top:1px}
 #track{flex:1;height:32px;position:relative;cursor:pointer;background:#0d1117}
@@ -65,15 +65,14 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
   <div id="liveTag">● LIVE</div>
 </div>
 
-<div id="map">
-  <div id="legend">
+<div id="map"></div>
+<div id="legend">
     <div id="legend-bar"></div>
     <div id="legend-labels"><span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span></div>
-  </div>
-  <div id="stationCard">
+</div>
+<div id="stationCard">
     <div class="sc-name" id="scName">—</div>
     <div class="sc-sub" id="scSub">Reflectivity • 0.5°</div>
-  </div>
 </div>
 
 <div id="sliderBar">
@@ -117,6 +116,33 @@ window.onload = () => {
 
   map.on('load', () => {
     mapReady = true;
+
+    // ── Apply OpenSnow's exact basemap style ──────────────────────────────
+    // Sourced directly from OpenSnow's Mapbox style (cloudninewx/cmafpdc8400s701spbs3pfe6n)
+    // Land: pure black. Water: hsl(213,23%,5%) very dark navy.
+    // County lines: hsl(0,0%,52%) gray. State lines slightly brighter.
+    // Roads: very dark, barely visible at low zoom.
+    const style = map.getStyle();
+    for (const layer of style.layers) {
+      try {
+        if (layer.type === 'background') {
+          map.setPaintProperty(layer.id, 'background-color', 'hsl(0, 0%, 0%)');
+        } else if (layer.type === 'fill' && layer.id.includes('water')) {
+          map.setPaintProperty(layer.id, 'fill-color', 'hsl(213, 23%, 5%)');
+        } else if (layer.type === 'line' && layer.id.includes('admin')) {
+          // State/country boundaries — keep visible like OpenSnow
+          map.setPaintProperty(layer.id, 'line-color', 'hsl(0, 0%, 52%)');
+          map.setPaintProperty(layer.id, 'line-opacity', 0.7);
+        } else if (layer.type === 'line' && (layer.id.includes('road') || layer.id.includes('bridge') || layer.id.includes('tunnel'))) {
+          // Roads barely visible — OpenSnow shows them very faintly
+          map.setPaintProperty(layer.id, 'line-opacity', 0.15);
+        } else if (layer.type === 'fill' && (layer.id.includes('land') || layer.id.includes('landuse') || layer.id.includes('park') || layer.id.includes('national'))) {
+          map.setPaintProperty(layer.id, 'fill-color', 'hsl(0, 0%, 0%)');
+          map.setPaintProperty(layer.id, 'fill-opacity', 1);
+        }
+      } catch(e) { /* some layers may not support certain paint properties */ }
+    }
+
     // Station markers
     for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
       const wrap = document.createElement('div');
@@ -266,7 +292,7 @@ async function redrawCurrentFrame() {
     canvasSize: 4096
   });
 
-  const imgData = new ImageData(new Uint8ClampedArray(result.pixels), 2048, 2048);
+  const imgData = new ImageData(new Uint8ClampedArray(result.pixels), 4096, 4096);
   RADAR_CTX.clearRect(0, 0, 4096, 4096);
   RADAR_CTX.putImageData(imgData, 0, 0);
 
