@@ -118,6 +118,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 .site-pill.sel .site-dot{background:var(--brand)}
 
 /* ── Mapbox overrides ── */
+.mapboxgl-marker{will-change:transform;backface-visibility:hidden}
 .mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
 .mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
 .mapboxgl-ctrl-group button:hover{background:#1a2535!important}
@@ -572,16 +573,49 @@ window.onload = () => {
   });
 };
 
-// ── Station pill markers ───────────────────────────────────────────────────
+// ── Station pill markers — viewport-culled ────────────────────────────────
+// Keeps all 142 markers in a pool but only adds visible ones to the map.
+// This means only ~10-20 DOM elements are being CSS-transformed per frame
+// instead of all 142, which eliminates the visual lag during panning.
+const markerPool = {}; // id → { marker, el, lat, lng }
+
 function addStationMarkers() {
+  // Build pool — don't add to map yet
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
     const el = document.createElement('div');
     el.className = 'site-pill';
     el.innerHTML = `<span class="site-dot"></span>${id}`;
     el.addEventListener('click', () => selectStation(id, lat, lng, el));
-    new mapboxgl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([lng, lat])
-      .addTo(map);
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat]);
+    markerPool[id] = { marker, el, lat, lng, added: false };
+  }
+
+  // Update visibility on every camera move
+  map.on('moveend', updateMarkerVisibility);
+  map.on('zoomend', updateMarkerVisibility);
+  updateMarkerVisibility();
+}
+
+function updateMarkerVisibility() {
+  const bounds = map.getBounds();
+  // Pad bounds slightly so pills near edges don't pop in/out
+  const pad = 2; // degrees
+  const n = bounds.getNorth() + pad;
+  const s = bounds.getSouth() - pad;
+  const e = bounds.getEast()  + pad;
+  const w = bounds.getWest()  - pad;
+
+  for (const id of Object.keys(markerPool)) {
+    const { marker, lat, lng, added } = markerPool[id];
+    const inView = lat <= n && lat >= s && lng <= e && lng >= w;
+    if (inView && !added) {
+      marker.addTo(map);
+      markerPool[id].added = true;
+    } else if (!inView && added) {
+      marker.remove();
+      markerPool[id].added = false;
+    }
   }
 }
 
