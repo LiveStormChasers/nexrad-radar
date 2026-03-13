@@ -818,6 +818,7 @@ async function fetchAndProcess(fi) {
   const velType = curProduct === 'VEL' ? 'vel' : curProduct === 'CC' ? 'cc' : null;
   try {
     const r = await fetch(`/radar/process/${curSite}/${f.key}${pParam}`);
+    if (r.status === 204) return; // no data for this product in this file (mid-scan)
     if (!r.ok) throw new Error(r.status);
     let buf = await r.arrayBuffer();
     const h = new Uint8Array(buf, 0, 2);
