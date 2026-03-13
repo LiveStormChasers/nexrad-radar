@@ -246,7 +246,7 @@ async function fetchAndRender(fi) {
     msgType = 'level2';
   }
 
-  const rendered = await runWorker(buf, 2048, msgType);
+  const rendered = await runWorker(buf, 800, msgType);
   f.imgData    = rendered.pixels;
   f.maxRangeKm = rendered.maxRangeKm;
   f.width      = rendered.width;
@@ -300,7 +300,7 @@ function drawFrame(f) {
     radarOverlay.setBounds(bounds);
   } else {
     radarOverlay = L.imageOverlay(dataUrl, bounds, {
-      opacity: 0.85,
+      opacity: 1.0,
       zIndex: 400,
       interactive: false,
       className: 'radar-overlay',
