@@ -277,13 +277,17 @@ const VEL_POS = [ // away (positive m/s)
 
 function velToRGBA(mps) {
   const mph = mps * 2.23694;
-  if (mph === 0) return [128, 128, 128];
-  const table = mph < 0 ? VEL_NEG : VEL_POS;
-  const v = Math.max(table[0].v, Math.min(table[table.length-1].v, mph));
-  if (v <= table[0].v) return [0,0,0]; // below range → transparent handled by alpha
+  const s   = Math.max(-60, Math.min(60, mph));
+  const table = s >= 0 ? VEL_POS : VEL_NEG;
+  // Below first stop → transparent (matches OpenSnow: s<=o[0].vel → [0,0,0,0])
+  if (s <= table[0].v) return null;
+  // Above last stop → clamp to last color
+  if (s >= table[table.length-1].v) {
+    const c = table[table.length-1].c; return [c[0],c[1],c[2]];
+  }
   for (let i = 0; i < table.length - 1; i++) {
-    if (v >= table[i].v && v < table[i+1].v) {
-      const t  = (v - table[i].v) / (table[i+1].v - table[i].v);
+    if (s >= table[i].v && s < table[i+1].v) {
+      const t  = (s - table[i].v) / (table[i+1].v - table[i].v);
       const c0 = table[i].c, c1 = table[i+1].c;
       return [
         Math.round(c0[0] + t*(c1[0]-c0[0])),
@@ -292,8 +296,7 @@ function velToRGBA(mps) {
       ];
     }
   }
-  const last = table[table.length-1].c;
-  return [last[0], last[1], last[2]];
+  return null;
 }
 
 // ── OpenSnow exact Correlation Coefficient palette ────────────────────────
@@ -336,11 +339,10 @@ function renderCompactVelFlat(buf) {
     const dstRow = r * numGates * 4;
     for (let g = 0; g < numGates; g++) {
       const val = data[src + g];
-      if (val <= 1) continue; // no data or range-folded
+      if (val <= 1) continue;
       const mps = (val - 129) * 0.5;
       const rgb = velToRGBA(mps);
-      const pi  = dstRow + g * 4;
-      rgba[pi]   = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 220;
+      if (!rgb) continue;
     }
   }
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
@@ -428,8 +430,7 @@ function renderLevel2VelFlat(buf) {
       const mps = radialData[r * numGates + g];
       if (mps <= -900) continue;
       const rgb = velToRGBA(mps);
-      const pi  = (r * numGates + g) * 4;
-      rgba[pi]   = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 220;
+      if (!rgb) continue;
     }
   }
   const maxRangeM = firstGateM + numGates * gateSizeM;

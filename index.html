@@ -724,10 +724,12 @@ async function selectStation(id, lat, lng) {
   await loadStation();
 }
 
-let loadGen = 0; // incremented each load; stale background tasks check this and bail
+let loadGen = 0;
+let liveRefreshTimer = null;
 
 async function loadStation() {
   const gen = ++loadGen;
+  clearTimeout(liveRefreshTimer);
   setStatus('Loading…');
   frames = []; frameIdx = 0;
   buildTicks(0);
@@ -736,7 +738,7 @@ async function loadStation() {
   try {
     const r   = await fetch(`/radar/list/${curSite}`);
     const lst = await r.json();
-    if (gen !== loadGen) return; // superseded
+    if (gen !== loadGen) return;
     if (!lst.length) { setStatus('No data'); return; }
 
     frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' }));
@@ -744,32 +746,69 @@ async function loadStation() {
     buildTicks(frames.length);
     setStatus('');
 
-    // Load latest frame first for immediate display
+    // Load latest frame immediately for display, then all others in parallel
     await fetchAndProcess(frameIdx);
     if (gen !== loadGen) return;
     updateTickLoaded(frameIdx);
     redrawCurrentFrame();
 
-    // Background-load remaining frames oldest→newest (reversed so newest loads first)
-    const indices = Array.from({length: frameIdx}, (_, i) => frameIdx - 1 - i);
-    const batchSize = 3;
-    for (let i = 0; i < indices.length; i += batchSize) {
-      if (gen !== loadGen) return; // station/product switched, stop loading
-      const batch = indices.slice(i, i + batchSize);
-      await Promise.all(batch.map(async fi => {
+    // Fire all remaining frames in parallel (OpenSnow loads everything at once)
+    await Promise.all(
+      frames.slice(0, frameIdx).map(async (_, i) => {
         if (gen !== loadGen) return;
-        await fetchAndProcess(fi);
+        await fetchAndProcess(i);
         if (gen !== loadGen) return;
-        updateTickLoaded(fi);
-      }));
-    }
+        updateTickLoaded(i);
+      })
+    );
     if (gen !== loadGen) return;
     document.getElementById('liveTag').style.display = '';
+
+    // Live refresh: check for new frames every 60s
+    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
   } catch(e) {
     if (gen !== loadGen) return;
     console.error(e);
     setStatus('Error loading');
   }
+}
+
+async function liveRefresh(gen) {
+  if (gen !== loadGen) return;
+  try {
+    const r   = await fetch(`/radar/list/${curSite}`);
+    const lst = await r.json();
+    if (gen !== loadGen) return;
+    // Find any filenames not already in frames
+    const existing = new Set(frames.map(f => f.key));
+    const newKeys  = lst.filter(k => !existing.has(k));
+    if (newKeys.length) {
+      // Append new frames and load them
+      for (const k of newKeys) {
+        frames.push({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' });
+      }
+      // Trim to last 24
+      if (frames.length > 24) frames.splice(0, frames.length - 24);
+      buildTicks(frames.length);
+      // Restore active seg classes for loaded frames
+      frames.forEach((f, i) => { if (f.compactBuf) updateTickLoaded(i); });
+      // Load new frames
+      await Promise.all(
+        frames.slice(-newKeys.length).map(async (_, i) => {
+          const fi = frames.length - newKeys.length + i;
+          await fetchAndProcess(fi);
+          if (gen !== loadGen) return;
+          updateTickLoaded(fi);
+        })
+      );
+      if (gen !== loadGen) return;
+      // If we were on the latest frame, jump to new latest
+      if (frameIdx === frames.length - newKeys.length - 1) {
+        setFrame(frames.length - 1);
+      }
+    }
+  } catch(e) { /* silent */ }
+  if (gen === loadGen) liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
 }
 
 // ── Frame loading ─────────────────────────────────────────────────────────
@@ -807,7 +846,6 @@ async function redrawCurrentFrame() {
   const f = frames[frameIdx];
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
-  // msgType encodes both format (compact/level2) and product (vel suffix)
   const msgType  = f.msgType || 'compact';
   const cacheKey = `${curSite}-${msgType}`;
 
@@ -850,7 +888,6 @@ function clearRadar() {
 // ── Slider ────────────────────────────────────────────────────────────────
 function initSlider() {
   const row = document.getElementById('segmentRow');
-  // Drag across segments
   let isDragging = false;
   row.addEventListener('mousedown',  e => { isDragging = true; scrubFromEvent(e); });
   window.addEventListener('mousemove', e => { if (isDragging) scrubFromEvent(e); });
@@ -859,9 +896,9 @@ function initSlider() {
   window.addEventListener('touchmove', e => { if (isDragging) scrubFromEvent(e.touches[0]); }, {passive:true});
   window.addEventListener('touchend',  () => { isDragging = false; });
 
-  document.getElementById('bBack').onclick = () => setFrame(frameIdx - 1);
+  document.getElementById('bBack').onclick = () => { stopPlay(); setFrame(frameIdx - 1); };
   document.getElementById('bPlay').onclick = togglePlay;
-  document.getElementById('bFwd').onclick  = () => setFrame(frameIdx + 1);
+  document.getElementById('bFwd').onclick  = () => { stopPlay(); setFrame(frameIdx + 1); };
 
   // Product toggle
   document.querySelectorAll('.ptab').forEach(btn => {
@@ -870,11 +907,8 @@ function initSlider() {
       curProduct = btn.dataset.p;
       document.querySelectorAll('.ptab').forEach(b => b.classList.toggle('active', b.dataset.p === curProduct));
       updateLegend();
-      // Reload current station with new product
       if (curSite) {
-        // Flush frame buffers so they get re-fetched with new product
         frames.forEach(f => { f.compactBuf = null; f.msgType = 'compact'; });
-        // Also invalidate coord cache so fresh grid computed
         for (const k of Object.keys(coordsCache)) delete coordsCache[k];
         if (radarLayer) radarLayer.clear();
         loadStation();
@@ -886,28 +920,7 @@ function initSlider() {
 }
 
 function scrollToSite() {
-  // Fly back to currently selected station
-  if (curSite && curLat && curLng) {
-    map.flyTo({ center: [curLng, curLat], zoom: 7, duration: 600 });
-  }
-}
-
-// ── Legend ────────────────────────────────────────────────────────────────
-function updateLegend() {
-  const bar    = document.getElementById('legend-bar');
-  const labels = document.getElementById('legend-labels');
-  if (curProduct === 'VEL') {
-    // OpenSnow velocity: -60→pink→purple→blue→lt.blue→lt.green→dk.green→gray→dk.red→pink→sandy→brown→+60
-    bar.style.background = 'linear-gradient(to right,rgb(255,182,193),rgb(139,0,139),rgb(0,0,139),rgb(173,216,230),rgb(144,238,144),rgb(0,100,0),rgb(128,128,128),rgb(139,0,0),rgb(255,192,203),rgb(244,164,96),rgb(101,67,33))';
-    labels.innerHTML = '<span>−60</span><span>−40</span><span>−20</span><span>0</span><span>+20</span><span>+40</span><span>+60 mph</span>';
-  } else if (curProduct === 'CC') {
-    // OpenSnow CC: gray→blue→green→yellow→red→purple
-    bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
-    labels.innerHTML = '<span>0.0</span><span>0.3</span><span>0.5</span><span>0.75</span><span>0.9</span><span>1.0</span>';
-  } else {
-    bar.style.background = 'linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)';
-    labels.innerHTML = '<span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span>';
-  }
+  if (curSite && curLat && curLng) map.flyTo({ center: [curLng, curLat], zoom: 7, duration: 600 });
 }
 
 function scrubFromEvent(e) {
@@ -944,25 +957,16 @@ function setFrame(idx, force) {
   if (idx === frameIdx && !force) return;
   frameIdx = idx;
 
-  // Update segment colors
   document.querySelectorAll('.seg').forEach((seg, i) => {
     seg.classList.remove('seg-active', 'seg-past', 'seg-future');
-    if (i === idx) {
-      seg.classList.add('seg-active');
-    } else if (frames[i]?.compactBuf) {
-      seg.classList.add('seg-past');
-    } else {
-      seg.classList.add('seg-future');
-    }
+    if (i === idx)              seg.classList.add('seg-active');
+    else if (frames[i]?.compactBuf) seg.classList.add('seg-past');
+    else                        seg.classList.add('seg-future');
   });
 
-  // Update station card subtitle with timestamp
   const prod = curProduct === 'VEL' ? 'Velocity' : curProduct === 'CC' ? 'Corr. Coeff.' : 'Reflectivity';
-  const lbl = frames[idx]?.label || '';
-  document.getElementById('scSub').textContent = lbl
-    ? `${prod} • 0.5° · ${lbl}`
-    : `${prod} • 0.5°`;
-
+  const lbl  = frames[idx]?.label || '';
+  document.getElementById('scSub').textContent = lbl ? `${prod} • 0.5° · ${lbl}` : `${prod} • 0.5°`;
   document.getElementById('liveTag').style.display = idx === frames.length - 1 ? '' : 'none';
 
   redrawCurrentFrame();
@@ -976,23 +980,54 @@ function setFrame(idx, force) {
   }
 }
 
+// ── Playback — matches OpenSnow: 50ms/frame, 750ms last-frame hold, loops ─
 function togglePlay() { playing ? stopPlay() : startPlay(); }
+
 function startPlay() {
   if (!frames.length) return;
   playing = true;
   document.getElementById('iconPlay').style.display  = 'none';
   document.getElementById('iconPause').style.display = '';
   if (frameIdx >= frames.length - 1) setFrame(0, true);
-  playTimer = setInterval(() => {
-    if (frameIdx >= frames.length - 1) { stopPlay(); return; }
-    setFrame(frameIdx + 1);
-  }, 600);
+  scheduleNextFrame();
 }
+
+function scheduleNextFrame() {
+  if (!playing) return;
+  const isLast = frameIdx >= frames.length - 1;
+  const delay  = isLast ? 750 : 50; // 750ms hold on last frame, 50ms between frames
+  playTimer = setTimeout(() => {
+    if (!playing) return;
+    if (frameIdx >= frames.length - 1) {
+      setFrame(0, true); // loop back to start
+    } else {
+      setFrame(frameIdx + 1);
+    }
+    scheduleNextFrame();
+  }, delay);
+}
+
 function stopPlay() {
   playing = false;
-  clearInterval(playTimer);
+  clearTimeout(playTimer);
   document.getElementById('iconPlay').style.display  = '';
   document.getElementById('iconPause').style.display = 'none';
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────
+function updateLegend() {
+  const bar    = document.getElementById('legend-bar');
+  const labels = document.getElementById('legend-labels');
+  if (curProduct === 'VEL') {
+    bar.style.background = 'linear-gradient(to right,rgb(255,182,193),rgb(139,0,139),rgb(0,0,139),rgb(173,216,230),rgb(144,238,144),rgb(0,100,0),rgb(128,128,128),rgb(139,0,0),rgb(255,192,203),rgb(244,164,96),rgb(101,67,33))';
+    labels.innerHTML = '<span>−60</span><span>−40</span><span>−20</span><span>0</span><span>+20</span><span>+40</span><span>+60 mph</span>';
+  } else if (curProduct === 'CC') {
+    bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
+    labels.innerHTML = '<span>0.0</span><span>0.3</span><span>0.5</span><span>0.75</span><span>0.9</span><span>1.0</span>';
+  } else {
+    bar.style.background = 'linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)';
+    labels.innerHTML = '<span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span>';
+  }
 }
 
 function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
