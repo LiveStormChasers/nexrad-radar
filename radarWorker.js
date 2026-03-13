@@ -1,13 +1,11 @@
-// radarWorker.js — NEXRAD square polar renderer for MapLibre canvas source
-// Renders a square image centered on the radar station.
-// MapLibre georferences it via canvas source coordinates — zero pan flicker.
+// radarWorker.js — NEXRAD renderer, WebGL CustomLayer mesh approach
+// Outputs flat gate×ray RGBA image + great-circle corner grid for exact georeferencing.
+// The main thread's RadarCustomLayer draws one WebGL quad per gate×ray cell positioned
+// at its true great-circle lat/lon — same approach as OpenSnow's radarWorker.
 
 importScripts('bzip2.js');
 
 // ── OpenSnow exact reflectivity color table (196 stops, -3 to 94.5 dBZ, 0.5 step) ──
-// Sourced directly from OpenSnow's radarWorker — exact RGBA values
-// Key: dBZ (0.5 steps) → [R, G, B, A]
-// Values < 1 dBZ → fully transparent (matches OpenSnow threshold)
 const COLOR_TABLE = new Map([
   [-3,[168,171,152]],[-2.5,[163,167,151]],[-2,[158,163,150]],[-1.5,[154,159,149]],
   [-1,[149,155,148]],[-0.5,[144,151,147]],[0,[139,147,146]],[0.5,[135,144,145]],
@@ -60,29 +58,20 @@ const COLOR_TABLE = new Map([
   [93,[130,40,24]],[93.5,[125,30,16]],[94,[120,20,8]],[94.5,[115,10,1]]
 ]);
 
-// dBZ → [R,G,B,A] — matches OpenSnow exactly
-// e < 1 dBZ → transparent. Rounds to 0.5 step, caps at 94.5
 function dbzToRGBA(dbz) {
-  if (dbz < 1) return null; // transparent
+  if (dbz < 1) return null;
   const key = Math.floor(dbz * 2) / 2;
   return COLOR_TABLE.get(Math.min(94.5, key)) || null;
 }
 
-// Flat RGBA lookup array for fast integer val lookup (compact binary format)
-// compact val: 0=no data, 1..254 → dBZ = (val - 2) * 0.5 - 32  ... actually val maps to dBZ directly
-// In our compact format: val byte → dBZ via CF Worker encoding
-// val=0 → no data, val=1 → below threshold, val=2..255 → dBZ = -32 + (val-2)*0.5
-// Build a 256-entry RGBA flat array
-const RGBA_PAL = new Uint8Array(256 * 4); // val index → RGBA
+// Fast palette for compact integer vals
+const RGBA_PAL = new Uint8Array(256 * 4);
 for (let val = 2; val <= 255; val++) {
   const dbz = -32 + (val - 2) * 0.5;
   const rgb = dbzToRGBA(dbz);
   if (rgb) {
-    const slot = val * 4;
-    RGBA_PAL[slot]   = rgb[0];
-    RGBA_PAL[slot+1] = rgb[1];
-    RGBA_PAL[slot+2] = rgb[2];
-    RGBA_PAL[slot+3] = 255;
+    const s = val * 4;
+    RGBA_PAL[s] = rgb[0]; RGBA_PAL[s+1] = rgb[1]; RGBA_PAL[s+2] = rgb[2]; RGBA_PAL[s+3] = 255;
   }
 }
 
@@ -101,80 +90,14 @@ function parseCompact(buf) {
   return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset };
 }
 
-// ── Square polar render from compact binary ───────────────────────────────
-// Uses bilinear azimuth interpolation between adjacent rays — eliminates the
-// hard wedge seams that make radar look blocky at long range.
-function renderCompactSquare(buf, size) {
-  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
-  const maxRangeM = maxRangeKm * 1000;
-  const pixels    = new Uint8ClampedArray(size * size * 4);
-  const half      = size / 2;
-  const mPerPx    = maxRangeM / half;
-
-  for (let py = 0; py < size; py++) {
-    const dyM = (half - py) * mPerPx;
-    for (let px = 0; px < size; px++) {
-      const dxM = (px - half) * mPerPx;
-      const rM  = Math.sqrt(dxM*dxM + dyM*dyM);
-      if (rM < firstRangeM || rM > maxRangeM) continue;
-
-      let az = Math.atan2(dxM, dyM) * 180 / Math.PI;
-      if (az < 0) az += 360;
-
-      // Continuous ray index — interpolate between adjacent azimuth rays
-      const azFrac = az / 360 * numAz;
-      const az0    = Math.floor(azFrac) % numAz;
-      const az1    = (az0 + 1) % numAz;
-      const t      = azFrac - Math.floor(azFrac);  // 0..1 between az0 and az1
-
-      const gateIdx = Math.floor((rM - firstRangeM) / gateSizeM);
-      if (gateIdx >= numGates) continue;
-
-      const val0 = data[gateOffset + az0 * numGates + gateIdx];
-      const val1 = data[gateOffset + az1 * numGates + gateIdx];
-
-      // Skip no-data (val=0). Palette already maps sub-1dBZ → transparent (alpha=0)
-      // OpenSnow threshold is 1 dBZ (val≈68). We pass all real data and let palette decide.
-      if (!val0 && !val1) continue;
-
-      const pi = (py * size + px) * 4;
-
-      // Blend between adjacent azimuth rays for smooth rendering
-      if (val0 && val1) {
-        const s0 = val0 * 4, s1 = val1 * 4;
-        const r = (RGBA_PAL[s0]   * (1-t) + RGBA_PAL[s1]   * t) | 0;
-        const g = (RGBA_PAL[s0+1] * (1-t) + RGBA_PAL[s1+1] * t) | 0;
-        const b = (RGBA_PAL[s0+2] * (1-t) + RGBA_PAL[s1+2] * t) | 0;
-        const a = (RGBA_PAL[s0+3] * (1-t) + RGBA_PAL[s1+3] * t) | 0;
-        if (!a) continue; // both rays below 1 dBZ threshold
-        pixels[pi]   = r;
-        pixels[pi+1] = g;
-        pixels[pi+2] = b;
-        pixels[pi+3] = a;
-      } else {
-        const s = (val0 || val1) * 4;
-        const a = RGBA_PAL[s+3];
-        if (!a) continue; // below 1 dBZ threshold
-        pixels[pi]   = RGBA_PAL[s];
-        pixels[pi+1] = RGBA_PAL[s+1];
-        pixels[pi+2] = RGBA_PAL[s+2];
-        pixels[pi+3] = a;
-      }
-    }
-  }
-
-  return { pixels, maxRangeKm };
-}
 
 // ── Level-2 parser ────────────────────────────────────────────────────────
 function parseLevel2(raw) {
   let data = new Uint8Array(raw);
   const sig = (data[0] << 8) | data[1];
-  if (sig === 0x425A) { // 'BZ' — old outer-bzip2 format
-    try { data = Bzip2.decompress(data); } catch(e) { /* use raw */ }
+  if (sig === 0x425A) {
+    try { data = Bzip2.decompress(data); } catch(e) {}
   }
-  // AR2V* — use raw directly
-
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24;
   const NUM_AZ = 720;
@@ -194,7 +117,6 @@ function parseLevel2(raw) {
       catch(e) { pos += recSize; continue; }
     }
     pos += recSize;
-
     let mpos = 0;
     while (mpos + 28 <= chunk.length) {
       const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
@@ -235,95 +157,136 @@ function parseLevel2(raw) {
       break;
     }
   }
-
   return { radialData, numGates, firstGateM, gateSizeM, NUM_AZ };
 }
 
-// ── Square polar render from Level-2 ─────────────────────────────────────
-// Uses OpenSnow color table (dbzToRGBA) and 1 dBZ threshold — same as compact path.
-function renderLevel2Square(buf, size) {
-  const parsed = parseLevel2(buf);
-  if (!parsed || !parsed.radialData) throw new Error('No REF data found');
-  const { radialData, numGates, firstGateM, gateSizeM } = parsed;
-  const maxRangeM  = firstGateM + numGates * gateSizeM;
-  const maxRangeKm = maxRangeM / 1000;
-  const pixels     = new Uint8ClampedArray(size * size * 4);
-  const half       = size / 2;
-  const mPerPx     = maxRangeM / half;
-  const NUM_AZ     = parsed.NUM_AZ;
 
-  for (let py = 0; py < size; py++) {
-    const dyM = (half - py) * mPerPx;
-    for (let px = 0; px < size; px++) {
-      const dxM = (px - half) * mPerPx;
-      const rM  = Math.sqrt(dxM*dxM + dyM*dyM);
-      if (rM < firstGateM || rM > maxRangeM) continue;
+// ── Great-circle corner grid ──────────────────────────────────────────────
+// Computes (nRays+1) × (nGates+1) corner positions.
+// Corner (r, g) = azimuth boundary r × range boundary g.
+// lngs[r*(nGates+1)+g], lats[r*(nGates+1)+g]
+function computeCornerGrid(radarLat, radarLon, nRays, nGates, firstRangeM, gateSizeM) {
+  const nCR = nRays + 1;
+  const nCG = nGates + 1;
+  const lngs = new Float32Array(nCR * nCG);
+  const lats  = new Float32Array(nCR * nCG);
 
-      let az = Math.atan2(dxM, dyM) * 180 / Math.PI;
-      if (az < 0) az += 360;
+  const φ1    = radarLat  * (Math.PI / 180);
+  const λ1    = radarLon  * (Math.PI / 180);
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const R     = 6371008.8;
 
-      // Azimuth interpolation — same as compact path for consistency
-      const azFrac = az / 360 * NUM_AZ;
-      const az0    = Math.floor(azFrac) % NUM_AZ;
-      const az1    = (az0 + 1) % NUM_AZ;
-      const t      = azFrac - Math.floor(azFrac);
-
-      const gateIdx = Math.floor((rM - firstGateM) / gateSizeM);
-      if (gateIdx >= numGates) continue;
-
-      const dbz0 = radialData[az0 * numGates + gateIdx];
-      const dbz1 = radialData[az1 * numGates + gateIdx];
-      // Use whichever ray has valid data; blend if both valid
-      const valid0 = dbz0 > -900;
-      const valid1 = dbz1 > -900;
-      if (!valid0 && !valid1) continue;
-
-      let r, g, b, a;
-      if (valid0 && valid1) {
-        const rgb0 = dbzToRGBA(dbz0);
-        const rgb1 = dbzToRGBA(dbz1);
-        if (!rgb0 && !rgb1) continue;
-        const c0 = rgb0 || [0,0,0], c1 = rgb1 || [0,0,0];
-        const a0 = rgb0 ? 255 : 0, a1 = rgb1 ? 255 : 0;
-        r = (c0[0]*(1-t) + c1[0]*t) | 0;
-        g = (c0[1]*(1-t) + c1[1]*t) | 0;
-        b = (c0[2]*(1-t) + c1[2]*t) | 0;
-        a = (a0*(1-t) + a1*t) | 0;
-      } else {
-        const dbz = valid0 ? dbz0 : dbz1;
-        const rgb = dbzToRGBA(dbz);
-        if (!rgb) continue;
-        r = rgb[0]; g = rgb[1]; b = rgb[2]; a = 255;
-      }
-      if (!a) continue;
-
-      const pi = (py * size + px) * 4;
-      pixels[pi]   = r;
-      pixels[pi+1] = g;
-      pixels[pi+2] = b;
-      pixels[pi+3] = a;
-    }
+  // Precompute per-gate boundary values (shared across all rays)
+  const cosD = new Float64Array(nCG);
+  const sinD = new Float64Array(nCG);
+  const a1   = new Float64Array(nCG); // sinφ1 * cosD
+  const a2   = new Float64Array(nCG); // cosφ1 * sinD
+  for (let g = 0; g < nCG; g++) {
+    const d = (firstRangeM + g * gateSizeM) / R;
+    cosD[g] = Math.cos(d);
+    sinD[g] = Math.sin(d);
+    a1[g]   = sinφ1 * cosD[g];
+    a2[g]   = cosφ1 * sinD[g];
   }
 
-  return { pixels, maxRangeKm };
+  for (let r = 0; r < nCR; r++) {
+    const bearing = (r / nRays) * (2 * Math.PI); // CW from North
+    const cosB   = Math.cos(bearing);
+    const sinB   = Math.sin(bearing);
+    const rowOff = r * nCG;
+    for (let g = 0; g < nCG; g++) {
+      const sinφ2 = a1[g] + a2[g] * cosB;
+      const φ2    = Math.asin(Math.max(-1, Math.min(1, sinφ2)));
+      const λ2    = λ1 + Math.atan2(sinB * sinD[g] * cosφ1, cosD[g] - sinφ1 * sinφ2);
+      lngs[rowOff + g] = λ2 * (180 / Math.PI);
+      lats[rowOff + g] = φ2 * (180 / Math.PI);
+    }
+  }
+  return { lngs, lats };
 }
+
+
+// ── Flat gate×ray RGBA from compact ──────────────────────────────────────
+function renderCompactFlat(buf) {
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const src    = gateOffset + r * numGates;
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const val = data[src + g];
+      if (!val) continue;
+      const s = val * 4;
+      const a = RGBA_PAL[s + 3];
+      if (!a) continue;
+      const pi = dstRow + g * 4;
+      rgba[pi]   = RGBA_PAL[s];
+      rgba[pi+1] = RGBA_PAL[s+1];
+      rgba[pi+2] = RGBA_PAL[s+2];
+      rgba[pi+3] = a;
+    }
+  }
+  return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
+}
+
+
+// ── Flat gate×ray RGBA from Level-2 ─────────────────────────────────────
+function renderLevel2Flat(buf) {
+  const parsed = parseLevel2(buf);
+  if (!parsed || !parsed.radialData) throw new Error('No REF data found');
+  const { radialData, numGates, firstGateM, gateSizeM, NUM_AZ } = parsed;
+  const rgba = new Uint8Array(NUM_AZ * numGates * 4);
+  for (let r = 0; r < NUM_AZ; r++) {
+    for (let g = 0; g < numGates; g++) {
+      const dbz = radialData[r * numGates + g];
+      if (dbz <= -900) continue;
+      const rgb = dbzToRGBA(dbz);
+      if (!rgb) continue;
+      const pi = (r * numGates + g) * 4;
+      rgba[pi]   = rgb[0];
+      rgba[pi+1] = rgb[1];
+      rgba[pi+2] = rgb[2];
+      rgba[pi+3] = 255;
+    }
+  }
+  const maxRangeM = firstGateM + numGates * gateSizeM;
+  return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM / 1000 };
+}
+
 
 // ── Message handler ───────────────────────────────────────────────────────
 self.onmessage = function(e) {
-  const { id, buffer, type, canvasSize } = e.data;
-  const size = canvasSize || 4096;
-
+  const { id, buffer, type, radarLat, radarLon, withCoords,
+          nRays, nGates, firstRangeM, gateSizeM } = e.data;
   try {
-    let result;
-    if (type === 'compact') {
-      result = renderCompactSquare(buffer, size);
-    } else if (type === 'level2') {
-      result = renderLevel2Square(buffer, size);
+    // Stand-alone coordinate grid computation (one-time per station)
+    if (type === 'coords') {
+      const { lngs, lats } = computeCornerGrid(radarLat, radarLon, nRays, nGates, firstRangeM, gateSizeM);
+      self.postMessage({ id, coords: { lngs, lats } }, [lngs.buffer, lats.buffer]);
+      return;
+    }
+
+    // Per-frame flat RGBA render
+    let flat;
+    if (type === 'compact' || type === 'compact_mesh') {
+      flat = renderCompactFlat(buffer);
+    } else if (type === 'level2' || type === 'level2_mesh') {
+      flat = renderLevel2Flat(buffer);
     } else {
       self.postMessage({ id, error: 'Unknown type: ' + type }); return;
     }
-    const pixels = result.pixels;
-    self.postMessage({ id, rendered: { pixels, maxRangeKm: result.maxRangeKm } }, [pixels.buffer]);
+
+    // Optionally bundle corner grid (first frame only — main thread caches it)
+    const transfers = [flat.rgba.buffer];
+    let coords = null;
+    if (withCoords && radarLat != null && radarLon != null) {
+      const cg = computeCornerGrid(radarLat, radarLon, flat.nRays, flat.nGates, flat.firstRangeM, flat.gateSizeM);
+      coords = { lngs: cg.lngs, lats: cg.lats };
+      transfers.push(cg.lngs.buffer, cg.lats.buffer);
+    }
+
+    self.postMessage({ id, rendered: { ...flat, coords } }, transfers);
   } catch(err) {
     self.postMessage({ id, error: err.message });
   }

@@ -53,9 +53,6 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 </head>
 <body>
 
-<!-- Hidden canvas — radar pixels are written here, MapLibre uploads to GPU -->
-<canvas id="radarCanvas" width="4096" height="4096" style="display:none"></canvas>
-
 <div id="topbar">
   <div class="logo">⚡ NEXRAD</div>
   <select id="product"><option value="REF">Reflectivity</option></select>
@@ -92,17 +89,295 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 const STATIONS={KABR:[45.46,-98.41],KABX:[35.15,-106.82],KAKQ:[36.98,-77.01],KAMA:[35.23,-101.71],KAMX:[25.61,-80.41],KAPX:[44.91,-84.72],KARX:[43.82,-91.19],KATX:[48.19,-122.49],KBBX:[39.49,-121.63],KBGM:[42.2,-75.99],KBHX:[40.5,-124.29],KBIS:[46.77,-100.76],KBLX:[45.85,-108.61],KBMX:[33.17,-86.77],KBOX:[41.96,-71.14],KBRO:[25.92,-97.42],KBUF:[42.95,-78.74],KBYX:[24.6,-81.7],KCAE:[33.95,-81.12],KCBW:[46.04,-67.81],KCBX:[43.49,-116.23],KCCX:[40.92,-78.0],KCLE:[41.41,-81.86],KCLX:[32.66,-81.04],KCRP:[27.78,-97.51],KCXX:[44.51,-73.17],KCYS:[41.15,-104.81],KDAX:[38.5,-121.68],KDDC:[37.76,-99.97],KDFX:[29.27,-100.28],KDGX:[32.28,-89.98],KDIX:[39.95,-74.41],KDLH:[46.84,-92.21],KDMX:[41.73,-93.72],KDOX:[38.82,-75.44],KDTX:[42.7,-83.47],KDVN:[41.61,-90.58],KDYX:[32.54,-99.25],KEAX:[38.81,-94.26],KEMX:[31.89,-110.63],KENX:[42.59,-74.06],KEOX:[31.46,-85.46],KEPZ:[31.87,-106.7],KESX:[35.7,-114.89],KEVX:[30.56,-85.92],KEWX:[29.7,-98.03],KEYX:[35.1,-117.56],KFCX:[37.02,-80.27],KFDR:[34.36,-98.97],KFDX:[34.63,-103.63],KFFC:[33.36,-84.57],KFSD:[43.59,-96.73],KFSX:[34.57,-111.2],KFTG:[39.79,-104.55],KFWS:[32.57,-97.3],KGGW:[48.21,-106.63],KGJX:[39.06,-108.21],KGLD:[39.37,-101.7],KGRB:[44.5,-88.11],KGRK:[30.72,-97.38],KGRR:[42.89,-85.54],KGSP:[34.88,-82.22],KGWX:[33.9,-88.33],KGYX:[43.89,-70.26],KHDC:[30.54,-87.99],KHDX:[33.08,-106.12],KHGX:[29.47,-95.08],KHNX:[36.31,-119.63],KHPX:[36.74,-87.28],KHTX:[34.93,-86.08],KICT:[37.65,-97.44],KICX:[37.59,-112.86],KILN:[39.42,-83.82],KILX:[40.15,-89.34],KIND:[39.7,-86.28],KINX:[36.18,-95.56],KIWA:[33.29,-111.67],KIWX:[41.36,-85.7],KJAX:[30.48,-81.7],KJGX:[32.68,-83.35],KJKL:[37.59,-83.31],KLBB:[33.65,-101.81],KLCH:[30.12,-93.22],KLGX:[47.12,-124.11],KLNX:[41.96,-100.58],KLOT:[41.6,-88.08],KLRX:[40.74,-116.8],KLSX:[38.7,-90.68],KLTX:[33.99,-78.43],KLVX:[37.97,-85.94],KLWX:[38.98,-77.48],KLZK:[34.84,-92.26],KMAF:[31.94,-102.19],KMAX:[42.08,-122.72],KMBX:[48.39,-100.86],KMHX:[34.78,-76.88],KMKX:[42.97,-88.55],KMLB:[28.11,-80.65],KMOB:[30.68,-88.24],KMPX:[44.85,-93.56],KMQT:[46.53,-87.55],KMRX:[36.17,-83.4],KMSX:[47.04,-113.99],KMTX:[41.26,-112.45],KMUX:[37.15,-121.9],KMVX:[47.53,-97.33],KMXX:[32.54,-85.79],KNKX:[32.92,-117.04],KNQA:[35.35,-89.87],KOAX:[41.32,-96.37],KOHX:[36.25,-86.56],KOKX:[40.87,-72.86],KOTX:[47.68,-117.63],KPAH:[37.07,-88.77],KPBZ:[40.53,-80.22],KPDT:[45.69,-118.85],KPOE:[31.16,-92.98],KPUX:[38.46,-104.18],KRAX:[35.66,-78.49],KRGX:[39.75,-119.46],KRIW:[43.07,-108.48],KRLX:[38.31,-81.72],KRTX:[45.71,-122.97],KSFX:[43.1,-112.69],KSGF:[37.23,-93.4],KSHV:[32.45,-93.84],KSJT:[31.37,-100.49],KSOX:[33.82,-117.64],KSRX:[35.29,-94.36],KTBW:[27.71,-82.4],KTFX:[47.46,-111.38],KTLX:[35.33,-97.28],KTWX:[38.99,-96.23],KTYX:[43.76,-75.68],KUDX:[44.12,-102.83],KUEX:[40.32,-98.44],KVAX:[30.89,-83.0],KVBX:[34.84,-120.4],KVNX:[36.74,-98.13],KVTX:[34.41,-119.18],KVWX:[38.26,-87.72],KYUX:[32.5,-114.66]};
 
 // ── State ─────────────────────────────────────────────────────────────────
-let map, mapReady = false;
+let map, mapReady = false, radarLayer = null;
 let curSite = null, curLat = 0, curLng = 0;
 let frames = [], frameIdx = 0;
 let playing = false, playTimer = null, dragging = false;
-let worker = null, workerQ = [];
+let worker = null, workerQ = {}, workerMsgId = 0;
 
-const RADAR_CANVAS = document.getElementById('radarCanvas');
-const RADAR_CTX    = RADAR_CANVAS.getContext('2d');
+// Coords cache: keyed by `${site}-${msgType}` → {lngs, lats}
+// Computed once per station (great-circle corner grid, ~50ms)
+const coordsCache = {};
+const coordsPending = {};  // key → true if a coords computation is in flight
+
+// ── WebGL Custom Layer ─────────────────────────────────────────────────────
+// Renders one quad per gate×ray cell at its exact great-circle lat/lon.
+// Input: flat rgba image (nGates wide × nRays tall) + corner coord textures.
+// Vertex shader uses gl_VertexID: no vertex buffers needed.
+class RadarCustomLayer {
+  constructor() {
+    this.id            = 'radar-mesh';
+    this.type          = 'custom';
+    this.renderingMode = '2d';
+    this.program  = null;
+    this.vao      = null;
+    this.lngTex   = null;
+    this.latTex   = null;
+    this.dataTex  = null;
+    this.nGates   = 0;
+    this.nRays    = 0;
+    this.hasCoords = false;
+    this.hasData   = false;
+    this.map       = null;
+  }
+
+  onAdd(map, gl) {
+    this.map = map;
+
+    // ── Vertex shader ───────────────────────────────────────────────────
+    // Uses gl_VertexID — no vertex buffers.
+    // 6 vertices per cell (2 triangles), laid out in cellIdx * 6 + localIdx.
+    // Corner textures: (nGates+1) wide × (nRays+1) tall, R32F float.
+    // Data texture: nGates wide × nRays tall, RGBA8.
+    const VS = `#version 300 es
+precision highp float;
+
+uniform mat4 u_matrix;   // Mercator→clip provided by Mapbox
+uniform float u_nGates;
+uniform float u_nRays;
+uniform sampler2D u_lngTex;  // corner longitudes
+uniform sampler2D u_latTex;  // corner latitudes
+
+out vec2 v_tex;
+
+void main() {
+  int cellIdx  = gl_VertexID / 6;
+  int localIdx = gl_VertexID - cellIdx * 6;
+
+  // Two triangles: (0,1,2) and (0,2,3)
+  // Corners: 0=ray,gate  1=ray,gate+1  2=ray+1,gate+1  3=ray+1,gate
+  int ci;
+  if      (localIdx == 1)              ci = 1;
+  else if (localIdx == 2 || localIdx == 4) ci = 2;
+  else if (localIdx == 5)              ci = 3;
+  else                                 ci = 0;
+
+  int nG = int(u_nGates);
+  int rayIdx  = cellIdx / nG;
+  int gateIdx = cellIdx - rayIdx * nG;
+
+  int cRay  = rayIdx  + (ci >= 2 ? 1 : 0);
+  int cGate = gateIdx + (ci == 1 || ci == 2 ? 1 : 0);
+
+  // Sample corner lat/lon from float textures
+  // Corner texture: width=(nGates+1), height=(nRays+1)
+  float tcU = (float(cGate) + 0.5) / (u_nGates + 1.0);
+  float tcV = (float(cRay)  + 0.5) / (u_nRays  + 1.0);
+  float lng = texture(u_lngTex, vec2(tcU, tcV)).r;
+  float lat = texture(u_latTex, vec2(tcU, tcV)).r;
+
+  // lng/lat → Mapbox Mercator [0..1]
+  // X: normalize longitude
+  float mx = (lng + 180.0) / 360.0;
+  // Y: Web Mercator (origin top-left, matching Mapbox convention)
+  float sinLat = sin(lat * 0.01745329252);
+  float my = 0.5 - log((1.0 + sinLat) / (1.0 - sinLat)) * 0.07957747155;
+
+  gl_Position = u_matrix * vec4(mx, my, 0.0, 1.0);
+
+  // UV into data texture: center of this cell
+  v_tex = vec2((float(gateIdx) + 0.5) / u_nGates,
+               (float(rayIdx)  + 0.5) / u_nRays);
+}`;
+
+    // ── Fragment shader ──────────────────────────────────────────────────
+    const FS = `#version 300 es
+precision mediump float;
+uniform sampler2D u_data;
+in vec2 v_tex;
+out vec4 fragColor;
+void main() {
+  vec4 c = texture(u_data, v_tex);
+  if (c.a < 0.5) discard;
+  fragColor = c;
+}`;
+
+    const prog = gl.createProgram();
+    for (const [src, type] of [[VS, gl.VERTEX_SHADER], [FS, gl.FRAGMENT_SHADER]]) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+        console.error('Shader error:', gl.getShaderInfoLog(sh));
+      gl.attachShader(prog, sh);
+    }
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      console.error('Link error:', gl.getProgramInfoLog(prog));
+
+    this.program = prog;
+    this.uMatrix = gl.getUniformLocation(prog, 'u_matrix');
+    this.uNGates = gl.getUniformLocation(prog, 'u_nGates');
+    this.uNRays  = gl.getUniformLocation(prog, 'u_nRays');
+    this.uLngTex = gl.getUniformLocation(prog, 'u_lngTex');
+    this.uLatTex = gl.getUniformLocation(prog, 'u_latTex');
+    this.uData   = gl.getUniformLocation(prog, 'u_data');
+
+    // Empty VAO — required for gl_VertexID without vertex buffers in WebGL2
+    this.vao = gl.createVertexArray();
+
+    // Allocate textures (filled by updateFrame)
+    this.lngTex  = this._mkFloatTex(gl);
+    this.latTex  = this._mkFloatTex(gl);
+    this.dataTex = this._mkRGBATex(gl);
+  }
+
+  _mkFloatTex(gl) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S,       gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T,       gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,   gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER,   gl.NEAREST);
+    return t;
+  }
+
+  _mkRGBATex(gl) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S,       gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T,       gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,   gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER,   gl.NEAREST);
+    return t;
+  }
+
+  // Call with lngs/lats on first frame (or station change), null on subsequent frames.
+  updateFrame(rgba, lngs, lats, nGates, nRays) {
+    const gl    = this.gl || this._getGL();
+    if (!gl) return;
+    this.nGates = nGates;
+    this.nRays  = nRays;
+
+    if (lngs && lats) {
+      // Upload corner coordinate textures (one-time per station)
+      const cW = nGates + 1, cH = nRays + 1;
+      gl.bindTexture(gl.TEXTURE_2D, this.lngTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, cW, cH, 0, gl.RED, gl.FLOAT, lngs);
+      gl.bindTexture(gl.TEXTURE_2D, this.latTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, cW, cH, 0, gl.RED, gl.FLOAT, lats);
+      this.hasCoords = true;
+    }
+
+    if (!this.hasCoords) return; // can't render without coords
+
+    // Upload data (color) texture — per frame
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nGates, nRays, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+
+    this.hasData = true;
+    this.map.triggerRepaint();
+  }
+
+  _getGL() {
+    // Fallback: get gl from Mapbox canvas
+    if (this.map) {
+      const canvas = this.map.getCanvas();
+      return canvas.getContext('webgl2') || canvas.getContext('webgl');
+    }
+    return null;
+  }
+
+  clear() {
+    this.hasData   = false;
+    this.hasCoords = false;
+    if (this.map) this.map.triggerRepaint();
+  }
+
+  render(gl, args) {
+    if (!this.hasData || !this.hasCoords || !this.program) return;
+
+    // Support both Mapbox v2 (matrix as Float32Array) and v3 (options object)
+    let matrix;
+    if (args instanceof Float32Array) {
+      matrix = args;
+    } else if (args && args.defaultProjectionData) {
+      matrix = args.defaultProjectionData.mainMatrix;
+    } else if (args && args.mainMatrix) {
+      matrix = args.mainMatrix;
+    } else {
+      matrix = args; // last resort
+    }
+    if (!matrix) return;
+
+    // Cache gl reference for updateFrame calls before onAdd gl is stored
+    this.gl = gl;
+
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+
+    gl.uniformMatrix4fv(this.uMatrix, false, matrix);
+    gl.uniform1f(this.uNGates, this.nGates);
+    gl.uniform1f(this.uNRays,  this.nRays);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.lngTex);
+    gl.uniform1i(this.uLngTex, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.latTex);
+    gl.uniform1i(this.uLatTex, 1);
+
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTex);
+    gl.uniform1i(this.uData, 2);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.DEPTH_TEST);
+
+    // 6 vertices per cell (2 triangles), no vertex buffer — gl_VertexID only
+    gl.drawArrays(gl.TRIANGLES, 0, this.nRays * this.nGates * 6);
+
+    gl.bindVertexArray(null);
+  }
+}
+
+// ── Worker bridge ─────────────────────────────────────────────────────────
+function initWorker() {
+  worker = new Worker('radarWorker.js');
+  worker.onmessage = e => {
+    const { id, rendered, coords, error } = e.data;
+    const p = workerQ[id];
+    if (!p) return;
+    delete workerQ[id];
+    if (error) p.rej(new Error(error));
+    else        p.res(rendered || { coords });
+  };
+}
+
+function runWorker(msg) {
+  return new Promise((res, rej) => {
+    const id = workerMsgId++;
+    workerQ[id] = { res, rej };
+    worker.postMessage({ id, ...msg });
+  });
+}
+
+// ── Decompression helper (gzip) ───────────────────────────────────────────
+async function gunzip(buf) {
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  writer.write(buf);
+  writer.close();
+  const chunks = [];
+  const reader = ds.readable.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const total = chunks.reduce((s, c) => s + c.byteLength, 0);
+  const out   = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  return out.buffer;
+}
 
 // ── Map init ──────────────────────────────────────────────────────────────
 window.onload = () => {
+  initWorker();
+
   mapboxgl.accessToken = 'pk.eyJ1IjoibGl2ZXN0b3JtY2hhc2VycyIsImEiOiJjbWsxY3RmcWIwMmNxM2NxNDNpZGJ6bWMwIn0.5GVRTGf4n9uBL_htx92oRQ';
   map = new mapboxgl.Map({
     container: 'map',
@@ -117,11 +392,7 @@ window.onload = () => {
   map.on('load', () => {
     mapReady = true;
 
-    // ── Apply OpenSnow's exact basemap style ──────────────────────────────
-    // Sourced directly from OpenSnow's Mapbox style (cloudninewx/cmafpdc8400s701spbs3pfe6n)
-    // Land: pure black. Water: hsl(213,23%,5%) very dark navy.
-    // County lines: hsl(0,0%,52%) gray. State lines slightly brighter.
-    // Roads: very dark, barely visible at low zoom.
+    // Apply OpenSnow basemap style
     const style = map.getStyle();
     for (const layer of style.layers) {
       try {
@@ -130,121 +401,109 @@ window.onload = () => {
         } else if (layer.type === 'fill' && layer.id.includes('water')) {
           map.setPaintProperty(layer.id, 'fill-color', 'hsl(213, 23%, 5%)');
         } else if (layer.type === 'line' && layer.id.includes('admin')) {
-          // State/country boundaries — keep visible like OpenSnow
           map.setPaintProperty(layer.id, 'line-color', 'hsl(0, 0%, 52%)');
           map.setPaintProperty(layer.id, 'line-opacity', 0.7);
         } else if (layer.type === 'line' && (layer.id.includes('road') || layer.id.includes('bridge') || layer.id.includes('tunnel'))) {
-          // Roads barely visible — OpenSnow shows them very faintly
           map.setPaintProperty(layer.id, 'line-opacity', 0.15);
-        } else if (layer.type === 'fill' && (layer.id.includes('land') || layer.id.includes('landuse') || layer.id.includes('park') || layer.id.includes('national'))) {
-          map.setPaintProperty(layer.id, 'fill-color', 'hsl(0, 0%, 0%)');
-          map.setPaintProperty(layer.id, 'fill-opacity', 1);
         }
-      } catch(e) { /* some layers may not support certain paint properties */ }
+      } catch(e) {}
     }
 
-    // Station markers
-    for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
-      const wrap = document.createElement('div');
-      wrap.innerHTML = `<div class="site-pill" id="pill-${id}"><div class="site-dot"></div>${id}</div>`;
-      wrap.firstChild.addEventListener('click', () => selectSite(id));
-      new mapboxgl.Marker({ element: wrap, anchor: 'left' }).setLngLat([lng, lat]).addTo(map);
-    }
+    // Add the radar custom layer (rendered last, on top of basemap)
+    radarLayer = new RadarCustomLayer();
+    map.addLayer(radarLayer);
+
+    addStationMarkers();
+    initSlider();
   });
-
-  initSlider();
-  spawnWorker();
 };
 
-// ── Worker ────────────────────────────────────────────────────────────────
-function spawnWorker() {
-  worker = new Worker('radarWorker.js');
-  worker.onmessage = e => {
-    const { id, rendered, error } = e.data;
-    const job = workerQ.find(j => j.id === id);
-    if (!job) return;
-    workerQ = workerQ.filter(j => j.id !== id);
-    if (error) job.reject(new Error(error));
-    else       job.resolve(rendered);
-  };
-}
-
-let workerIdCounter = 0;
-function runWorker(msg) {
-  return new Promise((resolve, reject) => {
-    const id = ++workerIdCounter;
-    workerQ.push({ id, resolve, reject });
-    worker.postMessage({ id, ...msg });
-  });
-}
-
-// ── Station select ────────────────────────────────────────────────────────
-async function selectSite(id) {
-  stopPlay();
-  curSite = id;
-  [curLat, curLng] = STATIONS[id];
-  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
-  document.getElementById('pill-' + id)?.classList.add('sel');
-  document.getElementById('curSite').textContent = id;
-  document.getElementById('scName').textContent  = id;
-  document.getElementById('stationCard').style.display = 'block';
-  map.flyTo({ center: [curLng, curLat], zoom: 8, duration: 600 });
-
-  frames = []; frameIdx = 0;
-  clearRadar();
-  setStatus('Loading frame list…');
-  buildTicks(0);
-
-  try {
-    const r = await fetch(`/radar/list/${id}`);
-    const keys = await r.json();
-    if (!keys.length) { setStatus('No data'); return; }
-
-    frames = keys.map(key => ({ key, label: keyToLabel(key), compactBuf: null, msgType: null, maxRangeKm: 460 }));
-    buildTicks(frames.length);
-    setFrame(frames.length - 1, true);
-    setStatus('Loading latest…');
-
-    await fetchAndProcess(frames.length - 1);
-    updateTickLoaded(frames.length - 1);
-    await redrawCurrentFrame();
-    setStatus('');
-
-    // Background load rest newest→oldest
-    const remaining = [];
-    for (let i = frames.length - 2; i >= 0; i--) remaining.push(i);
-    (async () => {
-      for (let i = 0; i < remaining.length; i += 3) {
-        await Promise.allSettled(remaining.slice(i, i + 3).map(fi =>
-          fetchAndProcess(fi).then(() => updateTickLoaded(fi)).catch(() => {})
-        ));
-      }
-    })();
-  } catch(e) {
-    setStatus('Error: ' + e.message);
+// ── Station markers ───────────────────────────────────────────────────────
+function addStationMarkers() {
+  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
+    const el = document.createElement('div');
+    el.className = 'site-pill';
+    el.innerHTML = `<span class="site-dot"></span>${id}`;
+    el.onclick = () => selectStation(id, lat, lng, el);
+    new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat])
+      .addTo(map);
   }
 }
 
-async function gunzip(buf) {
-  const ds = new DecompressionStream('gzip');
-  const w  = ds.writable.getWriter();
-  w.write(buf); w.close();
-  const chunks = []; const r = ds.readable.getReader();
-  while (true) { const {done,value} = await r.read(); if(done) break; chunks.push(value); }
-  const total = chunks.reduce((a,c)=>a+c.length,0);
-  const out = new Uint8Array(total); let off=0;
-  for (const c of chunks){out.set(c,off);off+=c.length;}
-  return out.buffer;
+// ── Station selection ─────────────────────────────────────────────────────
+async function selectStation(id, lat, lng, el) {
+  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
+  el.classList.add('sel');
+  curSite = id; curLat = lat; curLng = lng;
+  document.getElementById('curSite').textContent = id;
+  document.getElementById('scName').textContent  = id;
+  document.getElementById('stationCard').style.display = 'block';
+  stopPlay();
+
+  // Invalidate coords cache for this station (format params may differ)
+  for (const k of Object.keys(coordsCache)) {
+    if (k.startsWith(id + '-')) delete coordsCache[k];
+  }
+  for (const k of Object.keys(coordsPending)) {
+    if (k.startsWith(id + '-')) delete coordsPending[k];
+  }
+
+  if (radarLayer) radarLayer.clear();
+
+  map.flyTo({ center: [lng, lat], zoom: 7, duration: 800 });
+
+  await loadStation();
 }
 
+async function loadStation() {
+  setStatus('Loading…');
+  frames = []; frameIdx = 0;
+  buildTicks(0);
+  document.getElementById('liveTag').style.display = 'none';
+
+  try {
+    const r   = await fetch(`/radar/list/${curSite}`);
+    const lst = await r.json();
+    if (!lst.length) { setStatus('No data'); return; }
+
+    frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' }));
+    frameIdx = frames.length - 1;
+    buildTicks(frames.length);
+    setStatus('');
+
+    // Load latest frame first for immediate display
+    await fetchAndProcess(frameIdx);
+    updateTickLoaded(frameIdx);
+    redrawCurrentFrame();
+
+    // Background-load remaining frames
+    const toLoad = frames.slice(0, frameIdx).reverse();
+    const batchSize = 3;
+    for (let i = 0; i < toLoad.length; i += batchSize) {
+      const batch = toLoad.slice(i, i + batchSize);
+      await Promise.all(batch.map(async f => {
+        const fi = frames.indexOf(f);
+        await fetchAndProcess(fi);
+        updateTickLoaded(fi);
+      }));
+    }
+    document.getElementById('liveTag').style.display = '';
+  } catch(e) {
+    console.error(e);
+    setStatus('Error loading');
+  }
+}
+
+// ── Frame loading ─────────────────────────────────────────────────────────
 async function fetchAndProcess(fi) {
   const f = frames[fi];
   try {
     const r = await fetch(`/radar/process/${curSite}/${f.key}`);
     if (!r.ok) throw new Error(r.status);
     let buf = await r.arrayBuffer();
-    // CF Pages strips Content-Encoding, so decompress manually if gzip
-    if (new Uint8Array(buf,0,2)[0]===0x1f && new Uint8Array(buf,0,2)[1]===0x8b) buf = await gunzip(buf);
+    const h = new Uint8Array(buf, 0, 2);
+    if (h[0] === 0x1f && h[1] === 0x8b) buf = await gunzip(buf);
     f.compactBuf = buf;
     f.msgType    = 'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
@@ -264,57 +523,53 @@ function keyToLabel(key) {
   return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZoneName:'short'});
 }
 
-// ── Radar rendering via MapLibre image source ─────────────────────────────
-// Canvas source in MapLibre 4 renders transparent pixels as opaque black.
-// Fix: render to canvas → toDataURL (synchronous) → image source.
-// toDataURL avoids the async blob URL fetch race that causes the black square.
-
-function radarCoords(maxRangeKm) {
-  const r    = maxRangeKm || 460;
-  const cosL = Math.cos(curLat * Math.PI / 180);
-  const dLat = r / 111.111;
-  const dLng = r / (111.111 * cosL);
-  return [
-    [curLng - dLng, curLat + dLat], // NW
-    [curLng + dLng, curLat + dLat], // NE
-    [curLng + dLng, curLat - dLat], // SE
-    [curLng - dLng, curLat - dLat], // SW
-  ];
-}
-
+// ── Radar rendering ────────────────────────────────────────────────────────
+// Sends compact binary to worker → gets flat RGBA + (first time) corner grid.
+// CustomLayer renders one exact WebGL quad per gate×ray cell.
 async function redrawCurrentFrame() {
   const f = frames[frameIdx];
-  if (!f || !f.compactBuf || !mapReady) return;
+  if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
-  const result = await runWorker({
-    buffer:     f.compactBuf,
-    type:       f.msgType === 'compact' ? 'compact' : 'level2',
-    canvasSize: 4096
-  });
+  const msgType  = f.msgType === 'compact' ? 'compact' : 'level2';
+  const cacheKey = `${curSite}-${msgType}`;
 
-  const imgData = new ImageData(new Uint8ClampedArray(result.pixels), 4096, 4096);
-  RADAR_CTX.clearRect(0, 0, 4096, 4096);
-  RADAR_CTX.putImageData(imgData, 0, 0);
+  // Only request coords on first frame for this station+format combo.
+  // coordsPending prevents duplicate coord computations on concurrent calls.
+  const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
+  if (needCoords) coordsPending[cacheKey] = true;
 
-  // toDataURL is synchronous — no async fetch race, preserves alpha correctly
-  const url    = RADAR_CANVAS.toDataURL('image/png');
-  const coords = radarCoords(f.maxRangeKm);
-
-  if (map.getSource('radar')) {
-    map.getSource('radar').updateImage({ url, coordinates: coords });
-  } else {
-    map.addSource('radar', { type: 'image', url, coordinates: coords });
-    map.addLayer({
-      id: 'radar-layer', type: 'raster', source: 'radar',
-      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' }
+  let result;
+  try {
+    result = await runWorker({
+      buffer:     f.compactBuf,
+      type:       msgType,
+      radarLat:   curLat,
+      radarLon:   curLng,
+      withCoords: needCoords
     });
+  } catch(err) {
+    console.error('Worker error:', err);
+    return;
   }
+
+  // Cache corner grid if returned
+  if (result.coords) {
+    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    delete coordsPending[cacheKey];
+  }
+
+  const cached = coordsCache[cacheKey];
+  radarLayer.updateFrame(
+    result.rgba,
+    cached ? cached.lngs : null,
+    cached ? cached.lats : null,
+    result.nGates,
+    result.nRays
+  );
 }
 
 function clearRadar() {
-  if (map.getLayer('radar-layer')) map.removeLayer('radar-layer');
-  if (map.getSource('radar'))      map.removeSource('radar');
-  RADAR_CTX.clearRect(0, 0, 4096, 4096);
+  if (radarLayer) radarLayer.clear();
 }
 
 // ── Slider ────────────────────────────────────────────────────────────────
@@ -377,7 +632,6 @@ function setFrame(idx, force) {
 
   redrawCurrentFrame();
 
-  // On-demand load if not yet fetched
   if (!frames[idx]?.compactBuf) {
     setStatus('Loading…');
     fetchAndProcess(idx).then(() => {
