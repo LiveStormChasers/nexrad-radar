@@ -123,6 +123,8 @@ class RadarCustomLayer {
 
   onAdd(map, gl) {
     this.map = map;
+    this.gl  = gl;  // ← store gl reference — critical for updateFrame()
+    console.log('[RadarLayer] onAdd — WebGL', gl.getParameter(gl.VERSION));
 
     // ── Vertex shader ───────────────────────────────────────────────────
     // Uses gl_VertexID — no vertex buffers.
@@ -244,8 +246,8 @@ void main() {
 
   // Call with lngs/lats on first frame (or station change), null on subsequent frames.
   updateFrame(rgba, lngs, lats, nGates, nRays) {
-    const gl    = this.gl || this._getGL();
-    if (!gl) return;
+    const gl = this.gl;
+    if (!gl) { console.error('[RadarLayer] updateFrame called before onAdd'); return; }
     this.nGates = nGates;
     this.nRays  = nRays;
 
@@ -266,6 +268,7 @@ void main() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nGates, nRays, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
 
     this.hasData = true;
+    console.log(`[RadarLayer] frame uploaded: ${nGates}g × ${nRays}r, hasCoords=${this.hasCoords}`);
     this.map.triggerRepaint();
   }
 
@@ -298,7 +301,7 @@ void main() {
     } else {
       matrix = args; // last resort
     }
-    if (!matrix) return;
+    if (!matrix) { console.error('[RadarLayer] no matrix in render args:', args); return; }
 
     // Cache gl reference for updateFrame calls before onAdd gl is stored
     this.gl = gl;
@@ -327,8 +330,10 @@ void main() {
     gl.disable(gl.DEPTH_TEST);
 
     // 6 vertices per cell (2 triangles), no vertex buffer — gl_VertexID only
-    gl.drawArrays(gl.TRIANGLES, 0, this.nRays * this.nGates * 6);
-
+    const count = this.nRays * this.nGates * 6;
+    gl.drawArrays(gl.TRIANGLES, 0, count);
+    const err = gl.getError();
+    if (err) console.error('[RadarLayer] GL error after draw:', err);
     gl.bindVertexArray(null);
   }
 }
