@@ -255,29 +255,74 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── Velocity color table (toward=green, away=red, near-zero=black) ────────
-// Range: -130 to +130 knots (NEXRAD vel range), mapped to a diverging scale.
-// Values <= 1 (range folded / no data) are transparent.
+// ── OpenSnow exact velocity palette ──────────────────────────────────────
+// Negative = toward radar, Positive = away from radar
+// Source: reverse-engineered from opensnow.com/stormnet radarWorker
+const VEL_NEG = [ // toward (negative m/s)
+  { v: -60, c: [255,182,193] },
+  { v: -50, c: [139,  0,139] },
+  { v: -40, c: [  0,  0,139] },
+  { v: -30, c: [173,216,230] },
+  { v: -20, c: [144,238,144] },
+  { v: -10, c: [  0,100,  0] },
+  { v:   0, c: [128,128,128] },
+];
+const VEL_POS = [ // away (positive m/s)
+  { v:  0, c: [128,128,128] },
+  { v: 20, c: [139,  0,  0] },
+  { v: 40, c: [255,192,203] },
+  { v: 50, c: [244,164, 96] },
+  { v: 60, c: [101, 67, 33] },
+];
+
 function velToRGBA(mps) {
-  // Convert m/s to mph for display (NEXRAD stores m/s)
   const mph = mps * 2.23694;
-  const a   = Math.abs(mph);
-  if (a < 2) return [10, 10, 10]; // near-zero: very dark
-  if (mph < 0) {
-    // Toward (negative = toward radar) → green
-    const t = Math.min(1, a / 70);
-    const r = Math.round(0   + t *  0);
-    const g = Math.round(80  + t * 175);
-    const b = Math.round(20  + t *  20);
-    return [r, g, b];
-  } else {
-    // Away (positive = away from radar) → red
-    const t = Math.min(1, a / 70);
-    const r = Math.round(100 + t * 155);
-    const g = Math.round(10  + t *  10);
-    const b = Math.round(10  + t *  10);
-    return [r, g, b];
+  if (mph === 0) return [128, 128, 128];
+  const table = mph < 0 ? VEL_NEG : VEL_POS;
+  const v = Math.max(table[0].v, Math.min(table[table.length-1].v, mph));
+  if (v <= table[0].v) return [0,0,0]; // below range → transparent handled by alpha
+  for (let i = 0; i < table.length - 1; i++) {
+    if (v >= table[i].v && v < table[i+1].v) {
+      const t  = (v - table[i].v) / (table[i+1].v - table[i].v);
+      const c0 = table[i].c, c1 = table[i+1].c;
+      return [
+        Math.round(c0[0] + t*(c1[0]-c0[0])),
+        Math.round(c0[1] + t*(c1[1]-c0[1])),
+        Math.round(c0[2] + t*(c1[2]-c0[2])),
+      ];
+    }
   }
+  const last = table[table.length-1].c;
+  return [last[0], last[1], last[2]];
+}
+
+// ── OpenSnow exact Correlation Coefficient palette ────────────────────────
+// Input: cc value 0.0–1.05
+// Source: reverse-engineered from opensnow.com/stormnet radarWorker
+const CC_STOPS = [
+  { s: 0.00, e: 0.10, cs: [188,188,188], ce: [127,127,127] },
+  { s: 0.10, e: 0.30, cs: [172,209,243], ce: [ 11, 83,148] },
+  { s: 0.30, e: 0.50, cs: [108,169, 93], ce: [  4,114, 35] },
+  { s: 0.50, e: 0.75, cs: [255,217,102], ce: [237,122, 23] },
+  { s: 0.75, e: 0.90, cs: [224,102,102], ce: [153,  0,  0] },
+  { s: 0.90, e: 1.00, cs: [194,123,160], ce: [133,  0,195] },
+];
+
+function ccToRGBA(cc) {
+  if (isNaN(cc) || cc <= 0) return null;
+  const v = Math.min(1.0, cc);
+  for (const seg of CC_STOPS) {
+    if (v >= seg.s && v < seg.e) {
+      const t = (v - seg.s) / (seg.e - seg.s);
+      return [
+        Math.round(seg.cs[0] + t*(seg.ce[0]-seg.cs[0])),
+        Math.round(seg.cs[1] + t*(seg.ce[1]-seg.cs[1])),
+        Math.round(seg.cs[2] + t*(seg.ce[2]-seg.cs[2])),
+      ];
+    }
+  }
+  // ≥ 1.0 → clamp to last stop color
+  return [...CC_STOPS[CC_STOPS.length-1].ce];
 }
 
 // ── Compact velocity renderer ─────────────────────────────────────────────
@@ -393,6 +438,111 @@ function renderLevel2VelFlat(buf) {
 }
 
 
+// ── Compact CC renderer ───────────────────────────────────────────────────
+// CC compact encoding: val=0 → no data, val 2-254 → cc = (val-2)/240.0
+function renderCompactCCFlat(buf) {
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const src    = gateOffset + r * numGates;
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const val = data[src + g];
+      if (val <= 1) continue;
+      const cc  = (val - 2) / 240.0;
+      const rgb = ccToRGBA(cc);
+      if (!rgb) continue;
+      const pi = dstRow + g * 4;
+      rgba[pi]   = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 230;
+    }
+  }
+  return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
+}
+
+// ── Level-2 CC renderer ───────────────────────────────────────────────────
+function renderLevel2CCFlat(buf) {
+  let data = new Uint8Array(buf);
+  const sig = (data[0] << 8) | data[1];
+  if (sig === 0x425A) {
+    try { data = Bzip2.decompress(data); } catch(e) {}
+  }
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let pos = 24;
+  const NUM_AZ = 720;
+  let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
+  let foundElevIdx = null;
+
+  while (pos + 4 <= data.length) {
+    const recSizeRaw = dv.getInt32(pos, false);
+    pos += 4;
+    if (recSizeRaw === 0) break;
+    const recSize = Math.abs(recSizeRaw);
+    if (pos + recSize > data.length) break;
+    let chunk;
+    if (recSizeRaw < 0) { chunk = data.slice(pos, pos + recSize); }
+    else { try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); } catch(e) { pos += recSize; continue; } }
+    pos += recSize;
+    let mpos = 0;
+    while (mpos + 28 <= chunk.length) {
+      const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
+      const msgType = chunk[mpos+15];
+      const msgBytes = 12 + segsHW * 2;
+      if (msgType === 31) parseMsg31cc(chunk, mpos + 28);
+      mpos += Math.max(msgBytes, 28);
+    }
+  }
+
+  function parseMsg31cc(chunk, base) {
+    if (base + 68 > chunk.length) return;
+    const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
+    const elevIdx = dv2.getUint8(22);
+    if (elevIdx < 2) return;
+    if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
+    const az    = dv2.getFloat32(12, false);
+    const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
+    const nBlocks = dv2.getUint16(30, false);
+    for (let b = 0; b < nBlocks && b < 10; b++) {
+      if (base + 32 + (b+1)*4 > chunk.length) break;
+      const ptr   = dv2.getUint32(32 + b*4, false);
+      const bbase = chunk.byteOffset + base + ptr;
+      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
+      if (chunk[bbase] !== 68) continue;
+      // RHO block [R=82, H=72, O=79]
+      if (chunk[bbase+1]!==82||chunk[bbase+2]!==72||chunk[bbase+3]!==79) continue;
+      const bdv = new DataView(chunk.buffer, bbase);
+      const ng  = bdv.getUint16(8,  false);
+      const fg  = bdv.getUint16(10, false);
+      const gs  = bdv.getUint16(12, false);
+      const scl = bdv.getFloat32(20, false);
+      const ofs = bdv.getFloat32(24, false);
+      if (!radialData) { numGates=ng; firstGateM=fg; gateSizeM=gs; radialData=new Float32Array(NUM_AZ*ng).fill(-999); foundElevIdx=elevIdx; }
+      const dataOff = base + ptr + 28;
+      for (let g = 0; g < ng; g++) {
+        if (dataOff + g >= chunk.length) break;
+        const rv = chunk[chunk.byteOffset + dataOff + g];
+        radialData[azBin*numGates+g] = rv<=1 ? -999 : (rv-ofs)/scl;
+      }
+      break;
+    }
+  }
+
+  if (!radialData) throw new Error('No elevation-2 RHO data found');
+  const rgba = new Uint8Array(NUM_AZ * numGates * 4);
+  for (let r = 0; r < NUM_AZ; r++) {
+    for (let g = 0; g < numGates; g++) {
+      const cc = radialData[r * numGates + g];
+      if (cc <= -900) continue;
+      const rgb = ccToRGBA(cc);
+      if (!rgb) continue;
+      const pi = (r * numGates + g) * 4;
+      rgba[pi]=rgb[0]; rgba[pi+1]=rgb[1]; rgba[pi+2]=rgb[2]; rgba[pi+3]=230;
+    }
+  }
+  const maxRangeM = firstGateM + numGates * gateSizeM;
+  return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM/1000 };
+}
+
+
 // ── Message handler ───────────────────────────────────────────────────────
 self.onmessage = function(e) {
   const { id, buffer, type, radarLat, radarLon, withCoords,
@@ -407,8 +557,10 @@ self.onmessage = function(e) {
     let flat;
     if      (type === 'compact'     || type === 'compact_mesh') flat = renderCompactFlat(buffer);
     else if (type === 'compact_vel')                            flat = renderCompactVelFlat(buffer);
+    else if (type === 'compact_cc')                             flat = renderCompactCCFlat(buffer);
     else if (type === 'level2'      || type === 'level2_mesh')  flat = renderLevel2Flat(buffer);
     else if (type === 'level2_vel')                             flat = renderLevel2VelFlat(buffer);
+    else if (type === 'level2_cc')                              flat = renderLevel2CCFlat(buffer);
     else { self.postMessage({ id, error: 'Unknown type: ' + type }); return; }
 
     const transfers = [flat.rgba.buffer];

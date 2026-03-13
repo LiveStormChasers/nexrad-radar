@@ -139,6 +139,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   <div id="productToggle">
     <button class="ptab active" data-p="REF">Reflectivity</button>
     <button class="ptab" data-p="VEL">Velocity</button>
+    <button class="ptab" data-p="CC">Corr. Coeff.</button>
   </div>
   <div class="spacer"></div>
   <div id="loadStatus"></div>
@@ -765,7 +766,8 @@ async function loadStation() {
 // ── Frame loading ─────────────────────────────────────────────────────────
 async function fetchAndProcess(fi) {
   const f = frames[fi];
-  const pParam = curProduct === 'VEL' ? '?p=vel' : '';
+  const pParam = curProduct === 'VEL' ? '?p=vel' : curProduct === 'CC' ? '?p=cc' : '';
+  const velType = curProduct === 'VEL' ? 'vel' : curProduct === 'CC' ? 'cc' : null;
   try {
     const r = await fetch(`/radar/process/${curSite}/${f.key}${pParam}`);
     if (!r.ok) throw new Error(r.status);
@@ -773,13 +775,13 @@ async function fetchAndProcess(fi) {
     const h = new Uint8Array(buf, 0, 2);
     if (h[0] === 0x1f && h[1] === 0x8b) buf = await gunzip(buf);
     f.compactBuf = buf;
-    f.msgType    = curProduct === 'VEL' ? 'compact_vel' : 'compact';
+    f.msgType    = velType ? `compact_${velType}` : 'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
   } catch(e) {
     const r2 = await fetch(`/radar/file/${curSite}/${f.key}`);
     if (!r2.ok) throw new Error(r2.status);
     f.compactBuf = await r2.arrayBuffer();
-    f.msgType    = curProduct === 'VEL' ? 'level2_vel' : 'level2';
+    f.msgType    = velType ? `level2_${velType}` : 'level2';
     f.maxRangeKm = 460;
   }
 }
@@ -886,8 +888,13 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    bar.style.background = 'linear-gradient(to right,#00ff88 0%,#00cc44 18%,#006622 33%,#111 50%,#661111 67%,#cc2222 82%,#ff4444 100%)';
-    labels.innerHTML = '<span>−60</span><span>−30</span><span>0</span><span>+30</span><span>+60 mph</span>';
+    // OpenSnow velocity: -60→pink→purple→blue→lt.blue→lt.green→dk.green→gray→dk.red→pink→sandy→brown→+60
+    bar.style.background = 'linear-gradient(to right,rgb(255,182,193),rgb(139,0,139),rgb(0,0,139),rgb(173,216,230),rgb(144,238,144),rgb(0,100,0),rgb(128,128,128),rgb(139,0,0),rgb(255,192,203),rgb(244,164,96),rgb(101,67,33))';
+    labels.innerHTML = '<span>−60</span><span>−40</span><span>−20</span><span>0</span><span>+20</span><span>+40</span><span>+60 mph</span>';
+  } else if (curProduct === 'CC') {
+    // OpenSnow CC: gray→blue→green→yellow→red→purple
+    bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
+    labels.innerHTML = '<span>0.0</span><span>0.3</span><span>0.5</span><span>0.75</span><span>0.9</span><span>1.0</span>';
   } else {
     bar.style.background = 'linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)';
     labels.innerHTML = '<span>−32</span><span>0</span><span>20</span><span>40</span><span>60</span><span>94 dBZ</span>';
@@ -941,7 +948,7 @@ function setFrame(idx, force) {
   });
 
   // Update station card subtitle with timestamp
-  const prod = curProduct === 'VEL' ? 'Velocity' : 'Reflectivity';
+  const prod = curProduct === 'VEL' ? 'Velocity' : curProduct === 'CC' ? 'Corr. Coeff.' : 'Reflectivity';
   const lbl = frames[idx]?.label || '';
   document.getElementById('scSub').textContent = lbl
     ? `${prod} • 0.5° · ${lbl}`
