@@ -123,9 +123,15 @@ function bzip2Decompress(input){
 // ═══════════════════════════════════════════════════════════════
 
 function parseLevel2(rawBuf) {
-  let data;
-  try { data = bzip2Decompress(new Uint8Array(rawBuf)); }
-  catch(e) { throw new Error('Outer bzip2: ' + e.message); }
+  // Files starting with 'AR2V' are NOT outer-bzip2 wrapped (newer format).
+  // Files starting with 'BZ' are outer-bzip2 wrapped (older format).
+  let data = new Uint8Array(rawBuf);
+  const sig = (data[0] << 8) | data[1];
+  if (sig === 0x425A) { // 'BZ' — old outer-bzip2 format
+    try { data = bzip2Decompress(data); }
+    catch(e) { throw new Error('Outer bzip2: ' + e.message); }
+  }
+  // else: AR2V* — use raw bytes directly (24-byte header then LDM records)
 
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24; // skip archive-II 24-byte header
