@@ -110,13 +110,6 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 #bPlay:hover{background:var(--brand-hover)}
 #bPlay:active{transform:scale(0.9)}
 
-/* ── Site pills on map ── */
-.site-pill{display:inline-flex;align-items:center;gap:3px;background:#0b1520cc;border:1.5px solid #3b9afa33;border-radius:16px;padding:2px 6px 2px 4px;font-size:9px;font-weight:700;color:#7aaabb;cursor:pointer;backdrop-filter:blur(4px);transition:all .1s;box-shadow:0 1px 3px #00000055;white-space:nowrap}
-.site-pill:hover{border-color:#3b9afaaa;color:#fff;background:#1a2a3ccc}
-.site-pill.sel{border-color:var(--brand);color:#fff;background:#3b9afa18;box-shadow:0 0 8px #3b9afa33}
-.site-dot{width:5px;height:5px;border-radius:50%;background:#3b9afa66;flex-shrink:0}
-.site-pill.sel .site-dot{background:var(--brand)}
-
 /* ── Mapbox overrides ── */
 .mapboxgl-ctrl-group{background:#0d1117!important;border:1px solid #253040!important}
 .mapboxgl-ctrl-group button{background:#0d1117!important;color:#8aaabb!important}
@@ -519,49 +512,141 @@ window.onload = () => {
   map.on('load', () => {
     mapReady = true;
 
-    // Apply OpenSnow basemap style
+    // ── Match OpenSnow's basemap style ────────────────────────────────────
     const style = map.getStyle();
     for (const layer of style.layers) {
       try {
-        if (layer.type === 'background') {
-          map.setPaintProperty(layer.id, 'background-color', 'hsl(0, 0%, 0%)');
-        } else if (layer.type === 'fill' && layer.id.includes('water')) {
-          map.setPaintProperty(layer.id, 'fill-color', 'hsl(213, 23%, 5%)');
-        } else if (layer.type === 'line' && layer.id.includes('admin')) {
-          map.setPaintProperty(layer.id, 'line-color', 'hsl(0, 0%, 52%)');
-          map.setPaintProperty(layer.id, 'line-opacity', 0.7);
-        } else if (layer.type === 'line' && (layer.id.includes('road') || layer.id.includes('bridge') || layer.id.includes('tunnel'))) {
-          map.setPaintProperty(layer.id, 'line-opacity', 0.15);
+        const id = layer.id;
+        const type = layer.type;
+
+        if (type === 'background') {
+          map.setPaintProperty(id, 'background-color', 'hsl(0, 0%, 0%)');
+
+        } else if (type === 'fill' && (id.includes('water') || id === 'water')) {
+          map.setPaintProperty(id, 'fill-color', 'hsl(213, 23%, 5%)');
+
+        } else if (type === 'fill' && (id === 'national-park' || id === 'landuse')) {
+          map.setPaintProperty(id, 'fill-opacity', 0);
+
+        } else if (type === 'fill' && id === 'building') {
+          map.setPaintProperty(id, 'fill-opacity', 0);
+
+        } else if (type === 'line' && (id === 'waterway' || id.startsWith('waterway'))) {
+          map.setPaintProperty(id, 'line-opacity', 0);
+
+        } else if (type === 'line' && (id.includes('admin-0') || id.includes('admin-1'))) {
+          // State/country borders — match OpenSnow: gray, moderate opacity
+          map.setPaintProperty(id, 'line-color', 'hsl(0, 0%, 52%)');
+          map.setPaintProperty(id, 'line-opacity', id.includes('boundary-bg') ? 0 : 0.6);
+
+        } else if (type === 'line' && (id.includes('road') || id.includes('bridge') || id.includes('tunnel'))) {
+          // Roads: very dim, dark gray — match OpenSnow rgb(56,56,56) at low opacity
+          map.setPaintProperty(id, 'line-color', 'rgb(56, 56, 56)');
+          map.setPaintProperty(id, 'line-opacity', 0.4);
+
+        } else if (type === 'symbol' && (id.includes('label') || id.includes('place') || id.includes('settlement') || id.includes('state') || id.includes('country') || id.includes('continent') || id.includes('poi'))) {
+          // Labels: keep visible, white text on dark
+          map.setPaintProperty(id, 'text-color', 'rgba(255,255,255,0.85)');
+          map.setPaintProperty(id, 'text-halo-color', 'rgba(0,0,0,0.6)');
+          map.setPaintProperty(id, 'text-halo-width', 1);
         }
       } catch(e) {}
     }
 
-    // Add the radar custom layer (rendered last, on top of basemap)
+    // ── Radar custom layer — inserted BEFORE first symbol layer ───────────
+    // This means all labels (roads, cities, states) render on top of radar
     radarLayer = new RadarCustomLayer();
-    map.addLayer(radarLayer);
+    map.addLayer(radarLayer, 'road-label-simple');  // first symbol layer in dark-v11
 
-    addStationMarkers();
+    // ── Station markers as native GL source+layers (true geo-locking) ─────
+    addStationLayers();
     initSlider();
   });
 };
 
-// ── Station markers ───────────────────────────────────────────────────────
-function addStationMarkers() {
-  for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
-    const el = document.createElement('div');
-    el.className = 'site-pill';
-    el.innerHTML = `<span class="site-dot"></span>${id}`;
-    el.onclick = () => selectStation(id, lat, lng, el);
-    new mapboxgl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([lng, lat])
-      .addTo(map);
-  }
+// ── Station markers as Mapbox GL native source + circle + symbol layers ───
+// These are rendered inside the WebGL pipeline — perfectly geo-locked,
+// no DOM floating, no lag on pan/zoom.
+let selectedSiteId = null;
+
+function addStationLayers() {
+  // Build GeoJSON feature collection from STATIONS dict
+  const features = Object.entries(STATIONS).map(([id, [lat, lng]]) => ({
+    type: 'Feature',
+    id: id,   // used for feature-state
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: { id, lat, lng }
+  }));
+
+  map.addSource('stations', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features },
+    promoteId: 'id'   // lets us use feature-state by station id
+  });
+
+  // Dot layer — glowing circle
+  map.addLayer({
+    id: 'stations-dot',
+    type: 'circle',
+    source: 'stations',
+    paint: {
+      'circle-radius': ['case', ['boolean', ['feature-state', 'selected'], false], 7, 4],
+      'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false],
+        '#3b9afa', 'rgba(59,154,250,0.4)'],
+      'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 2, 1],
+      'circle-stroke-color': '#3b9afa',
+      'circle-blur': 0
+    }
+  });
+
+  // Label layer — station ID text below dot
+  map.addLayer({
+    id: 'stations-label',
+    type: 'symbol',
+    source: 'stations',
+    layout: {
+      'text-field': ['get', 'id'],
+      'text-size': 9,
+      'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+      'text-offset': [0, 1.0],
+      'text-anchor': 'top',
+      'text-allow-overlap': false,
+      'text-ignore-placement': false
+    },
+    paint: {
+      'text-color': ['case', ['boolean', ['feature-state', 'selected'], false],
+        '#ffffff', 'rgba(122,170,187,0.85)'],
+      'text-halo-color': 'rgba(0,0,0,0.7)',
+      'text-halo-width': 1.5
+    }
+  });
+
+  // Click handler
+  map.on('click', 'stations-dot', (e) => {
+    const props = e.features[0].properties;
+    selectStation(props.id, props.lat, props.lng);
+  });
+  map.on('click', 'stations-label', (e) => {
+    const props = e.features[0].properties;
+    selectStation(props.id, props.lat, props.lng);
+  });
+
+  // Pointer cursor on hover
+  map.on('mouseenter', 'stations-dot',   () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'stations-dot',   () => { map.getCanvas().style.cursor = ''; });
+  map.on('mouseenter', 'stations-label', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'stations-label', () => { map.getCanvas().style.cursor = ''; });
 }
 
 // ── Station selection ─────────────────────────────────────────────────────
-async function selectStation(id, lat, lng, el) {
-  document.querySelectorAll('.site-pill').forEach(p => p.classList.remove('sel'));
-  el.classList.add('sel');
+async function selectStation(id, lat, lng) {
+  // Update GL feature-state (deselect old, select new)
+  if (selectedSiteId) {
+    map.setFeatureState({ source: 'stations', id: selectedSiteId }, { selected: false });
+  }
+  selectedSiteId = id;
+  map.setFeatureState({ source: 'stations', id }, { selected: true });
+
   curSite = id; curLat = lat; curLng = lng;
   document.getElementById('scName').textContent  = id;
   document.getElementById('stationCard').style.display = 'flex';
