@@ -724,7 +724,10 @@ async function selectStation(id, lat, lng) {
   await loadStation();
 }
 
+let loadGen = 0; // incremented each load; stale background tasks check this and bail
+
 async function loadStation() {
+  const gen = ++loadGen;
   setStatus('Loading…');
   frames = []; frameIdx = 0;
   buildTicks(0);
@@ -733,6 +736,7 @@ async function loadStation() {
   try {
     const r   = await fetch(`/radar/list/${curSite}`);
     const lst = await r.json();
+    if (gen !== loadGen) return; // superseded
     if (!lst.length) { setStatus('No data'); return; }
 
     frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' }));
@@ -742,22 +746,27 @@ async function loadStation() {
 
     // Load latest frame first for immediate display
     await fetchAndProcess(frameIdx);
+    if (gen !== loadGen) return;
     updateTickLoaded(frameIdx);
     redrawCurrentFrame();
 
-    // Background-load remaining frames
-    const toLoad = frames.slice(0, frameIdx).reverse();
+    // Background-load remaining frames oldest→newest (reversed so newest loads first)
+    const indices = Array.from({length: frameIdx}, (_, i) => frameIdx - 1 - i);
     const batchSize = 3;
-    for (let i = 0; i < toLoad.length; i += batchSize) {
-      const batch = toLoad.slice(i, i + batchSize);
-      await Promise.all(batch.map(async f => {
-        const fi = frames.indexOf(f);
+    for (let i = 0; i < indices.length; i += batchSize) {
+      if (gen !== loadGen) return; // station/product switched, stop loading
+      const batch = indices.slice(i, i + batchSize);
+      await Promise.all(batch.map(async fi => {
+        if (gen !== loadGen) return;
         await fetchAndProcess(fi);
+        if (gen !== loadGen) return;
         updateTickLoaded(fi);
       }));
     }
+    if (gen !== loadGen) return;
     document.getElementById('liveTag').style.display = '';
   } catch(e) {
+    if (gen !== loadGen) return;
     console.error(e);
     setStatus('Error loading');
   }

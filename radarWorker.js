@@ -357,6 +357,7 @@ function renderLevel2VelFlat(buf) {
   let pos = 24;
   const NUM_AZ = 720;
   let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
+  let foundElevIdx = null;
 
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
@@ -381,8 +382,6 @@ function renderLevel2VelFlat(buf) {
       mpos += Math.max(msgBytes, 28);
     }
   }
-
-  let foundElevIdx = null;
 
   function parseMsg31vel(chunk, base) {
     if (base + 68 > chunk.length) return;
