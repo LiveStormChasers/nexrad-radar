@@ -103,6 +103,8 @@ function parseCompact(buf) {
 }
 
 // ── Square polar render from compact binary ───────────────────────────────
+// Uses bilinear azimuth interpolation between adjacent rays — eliminates the
+// hard wedge seams that make radar look blocky at long range.
 function renderCompactSquare(buf, size) {
   const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
   const maxRangeM = maxRangeKm * 1000;
@@ -119,23 +121,44 @@ function renderCompactSquare(buf, size) {
 
       let az = Math.atan2(dxM, dyM) * 180 / Math.PI;
       if (az < 0) az += 360;
-      const azBin   = Math.floor(az * 2) % numAz;
+
+      // Continuous ray index — interpolate between adjacent azimuth rays
+      const azFrac = az / 360 * numAz;
+      const az0    = Math.floor(azFrac) % numAz;
+      const az1    = (az0 + 1) % numAz;
+      const t      = azFrac - Math.floor(azFrac);  // 0..1 between az0 and az1
+
       const gateIdx = Math.floor((rM - firstRangeM) / gateSizeM);
       if (gateIdx >= numGates) continue;
 
-      const val = data[gateOffset + azBin * numGates + gateIdx];
-      if (val === 0 || val <= 70) continue; // ~3 dBZ threshold
+      const val0 = data[gateOffset + az0 * numGates + gateIdx];
+      const val1 = data[gateOffset + az1 * numGates + gateIdx];
 
-      const pi   = (py * size + px) * 4;
-      const slot = val * 4;
-      pixels[pi]   = RGBA_PAL[slot];
-      pixels[pi+1] = RGBA_PAL[slot+1];
-      pixels[pi+2] = RGBA_PAL[slot+2];
+      // ~3 dBZ threshold on both rays
+      const v0 = val0 > 70 ? val0 : 0;
+      const v1 = val1 > 70 ? val1 : 0;
+      if (!v0 && !v1) continue;
+
+      const pi = (py * size + px) * 4;
+      if (v0 && v1) {
+        // Both rays have data — blend palette colors
+        const s0 = v0 * 4, s1 = v1 * 4;
+        pixels[pi]   = (RGBA_PAL[s0]   * (1-t) + RGBA_PAL[s1]   * t) | 0;
+        pixels[pi+1] = (RGBA_PAL[s0+1] * (1-t) + RGBA_PAL[s1+1] * t) | 0;
+        pixels[pi+2] = (RGBA_PAL[s0+2] * (1-t) + RGBA_PAL[s1+2] * t) | 0;
+      } else {
+        // Only one ray has data — use it directly (no blending with void)
+        const s = (v0 || v1) * 4;
+        pixels[pi]   = RGBA_PAL[s];
+        pixels[pi+1] = RGBA_PAL[s+1];
+        pixels[pi+2] = RGBA_PAL[s+2];
+      }
       pixels[pi+3] = 255;
     }
   }
 
-  despeckle(pixels, size, size);
+  // Despeckle removed — 3 dBZ threshold is sufficient, and despeckle
+  // removes real precipitation pixels at storm edges.
   return { pixels, maxRangeKm };
 }
 
@@ -258,7 +281,7 @@ function renderLevel2Square(buf, size) {
 // ── Message handler ───────────────────────────────────────────────────────
 self.onmessage = function(e) {
   const { id, buffer, type, canvasSize } = e.data;
-  const size = canvasSize || 2048;
+  const size = canvasSize || 4096;
 
   try {
     let result;

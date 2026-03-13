@@ -54,7 +54,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 <body>
 
 <!-- Hidden canvas — radar pixels are written here, MapLibre uploads to GPU -->
-<canvas id="radarCanvas" width="2048" height="2048" style="display:none"></canvas>
+<canvas id="radarCanvas" width="4096" height="4096" style="display:none"></canvas>
 
 <div id="topbar">
   <div class="logo">⚡ NEXRAD</div>
@@ -263,11 +263,11 @@ async function redrawCurrentFrame() {
   const result = await runWorker({
     buffer:     f.compactBuf,
     type:       f.msgType === 'compact' ? 'compact' : 'level2',
-    canvasSize: 2048
+    canvasSize: 4096
   });
 
   const imgData = new ImageData(new Uint8ClampedArray(result.pixels), 2048, 2048);
-  RADAR_CTX.clearRect(0, 0, 2048, 2048);
+  RADAR_CTX.clearRect(0, 0, 4096, 4096);
   RADAR_CTX.putImageData(imgData, 0, 0);
 
   // toDataURL is synchronous — no async fetch race, preserves alpha correctly
@@ -280,7 +280,7 @@ async function redrawCurrentFrame() {
     map.addSource('radar', { type: 'image', url, coordinates: coords });
     map.addLayer({
       id: 'radar-layer', type: 'raster', source: 'radar',
-      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0 }
+      paint: { 'raster-opacity': 1.0, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' }
     });
   }
 }
@@ -288,7 +288,7 @@ async function redrawCurrentFrame() {
 function clearRadar() {
   if (map.getLayer('radar-layer')) map.removeLayer('radar-layer');
   if (map.getSource('radar'))      map.removeSource('radar');
-  RADAR_CTX.clearRect(0, 0, 2048, 2048);
+  RADAR_CTX.clearRect(0, 0, 4096, 4096);
 }
 
 // ── Slider ────────────────────────────────────────────────────────────────
