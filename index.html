@@ -50,7 +50,7 @@ select{background:#141d2b;border:1px solid #253040;color:#c8daea;font-size:11px;
 .site-pill.sel .site-dot{background:#38d9f5}
 .leaflet-div-icon{background:transparent!important;border:none!important}
 .leaflet-control-zoom a{background:#0d1117!important;color:#8aaabb!important;border-color:#253040!important}
-.radar-overlay{}
+.radar-overlay{image-rendering:pixelated;image-rendering:crisp-edges}
 </style>
 </head>
 <body>
@@ -246,7 +246,7 @@ async function fetchAndRender(fi) {
     msgType = 'level2';
   }
 
-  const rendered = await runWorker(buf, 2048, msgType);
+  const rendered = await runWorker(buf, 1400, msgType);
   f.imgData    = rendered.pixels;
   f.maxRangeKm = rendered.maxRangeKm;
   f.width      = rendered.width;
