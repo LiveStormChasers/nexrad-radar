@@ -141,9 +141,12 @@ function renderCompactSquare(buf, size) {
 
 // ── Level-2 parser ────────────────────────────────────────────────────────
 function parseLevel2(raw) {
-  let data;
-  try { data = Bzip2.decompress(new Uint8Array(raw)); }
-  catch(e) { data = new Uint8Array(raw); }
+  let data = new Uint8Array(raw);
+  const sig = (data[0] << 8) | data[1];
+  if (sig === 0x425A) { // 'BZ' — old outer-bzip2 format
+    try { data = Bzip2.decompress(data); } catch(e) { /* use raw */ }
+  }
+  // AR2V* — use raw directly
 
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let pos = 24;
