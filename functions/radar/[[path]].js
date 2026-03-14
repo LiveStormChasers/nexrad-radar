@@ -438,64 +438,58 @@ export async function onRequest(context) {
 
   // PROCESS — the fast path
   if (path.startsWith('process/')) {
-    const rest    = path.slice(8); // KXXX/filename.bz2
-    const product = url.searchParams.get('p') === 'vel' ? 'vel'
-                  : url.searchParams.get('p') === 'cc'  ? 'cc'
-                  : 'ref';
-    const cacheId = `v1-${product}/${rest}`;
-
-    // Check CF edge cache
-    const cache    = caches.default;
-    const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
-    const cached   = await cache.match(cacheKey);
-    if (cached) {
-      const h = new Headers(cached.headers);
-      h.set('Access-Control-Allow-Origin','*');
-      h.set('X-Cache','HIT');
-      return new Response(cached.body, { status:200, headers:h });
-    }
-
-    // Fetch raw Level-2
-    let rawBuf;
     try {
+      const rest    = path.slice(8);
+      const product = url.searchParams.get('p') === 'vel' ? 'vel'
+                    : url.searchParams.get('p') === 'cc'  ? 'cc'
+                    : 'ref';
+      const cacheId = `v1-${product}/${rest}`;
+
+      const cache    = caches.default;
+      const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
+      const cached   = await cache.match(cacheKey);
+      if (cached) {
+        const h = new Headers(cached.headers);
+        h.set('Access-Control-Allow-Origin','*');
+        h.set('X-Cache','HIT');
+        return new Response(cached.body, { status:200, headers:h });
+      }
+
+      // Fetch raw Level-2
       const r = await fetch(`${NOMADS}/${rest}`);
       if (!r.ok) return new Response('NOMADS '+r.status, { status:r.status, headers:CORS });
-      rawBuf = await r.arrayBuffer();
+      const rawBuf = await r.arrayBuffer();
+
+      // Parse
+      const parsed = parseLevel2(rawBuf, product);
+      if (!parsed) return new Response('No data', { status:204, headers:CORS });
+
+      // Encode + compress
+      const compact = encodeCompact(parsed);
+      const gzipped = await gzipCompress(compact);
+
+      const ttl = parsed.isComplete ? 604800 : 30;
+      const headers = {
+        ...CORS,
+        'Content-Type':     'application/octet-stream',
+        'Content-Encoding': 'gzip',
+        'Cache-Control':    `public, max-age=${ttl}`,
+        'X-Cache':          'MISS',
+        'X-Product':        product,
+        'X-Complete':       String(parsed.isComplete),
+        'X-Compact-Bytes':  String(compact.byteLength),
+        'X-Gzip-Bytes':     String(gzipped.byteLength),
+      };
+
+      const response = new Response(gzipped, { status:200, headers });
+      if (parsed.isComplete) context.waitUntil(cache.put(cacheKey, response.clone()));
+      return response;
+
     } catch(e) {
-      return new Response('Fetch: '+e.message, { status:502, headers:CORS });
+      return new Response('Error: ' + (e?.message || String(e)) + '\nStack: ' + (e?.stack || ''), {
+        status: 500, headers: CORS
+      });
     }
-
-    // Parse + encode
-    let parsed;
-    try { parsed = parseLevel2(rawBuf, product); }
-    catch(e) { return new Response('Parse: '+e.message, { status:500, headers:CORS }); }
-
-    // null means no data found (mid-scan / product not in this file)
-    if (!parsed) return new Response('No data', { status:204, headers:CORS });
-
-    const compact = encodeCompact(parsed);
-    const gzipped = await gzipCompress(compact);
-
-    // Don't long-cache incomplete scans — they'll fill in as the volume scan progresses.
-    // Complete scans (≥700 azimuths populated) are immutable, cache 7 days.
-    const ttl = parsed.isComplete ? 604800 : 30;
-
-    const headers = {
-      ...CORS,
-      'Content-Type':     'application/octet-stream',
-      'Content-Encoding': 'gzip',
-      'Cache-Control':    `public, max-age=${ttl}`,
-      'X-Cache':          'MISS',
-      'X-Product':        product,
-      'X-Complete':       String(parsed.isComplete),
-      'X-Compact-Bytes':  String(compact.byteLength),
-      'X-Gzip-Bytes':     String(gzipped.byteLength),
-    };
-
-    const response = new Response(gzipped, { status:200, headers });
-    // Only cache complete scans in the edge cache
-    if (parsed.isComplete) context.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
   }
 
   return new Response('Not found', { status:404, headers:CORS });
