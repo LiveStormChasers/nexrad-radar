@@ -265,11 +265,24 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  if (!radialData) throw new Error(`No ${product.toUpperCase()} data found in any elevation`);
+  if (!radialData) {
+    // No data found for this product — file may be mid-scan or not contain this moment type.
+    // Return null so caller can skip encoding rather than 500ing.
+    return null;
+  }
+
+  // Count how many azimuths actually have data (to detect mid-scan files)
+  let populatedAz = 0;
+  for (let r = 0; r < NUM_AZ; r++) {
+    for (let g = 0; g < Math.min(numGates, 10); g++) {
+      if (radialData[r * numGates + g] > -900) { populatedAz++; break; }
+    }
+  }
+  const isComplete = populatedAz >= 700; // full 720-ray sweep ≈ complete
 
   // Apply REF quality mask to VEL/CC: zero out gates without a real echo
   if (product !== 'ref' && refData) {
-    const refGateRatio = refNumGates / numGates; // usually 1:1 or 4:1 depending on VCP
+    const refGateRatio = refNumGates / numGates;
     for (let r = 0; r < NUM_AZ; r++) {
       for (let g = 0; g < numGates; g++) {
         const refG = Math.min(Math.floor(g * refGateRatio), refNumGates - 1);
@@ -281,7 +294,31 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product };
+  // Velocity: remove range-folded / aliased gates using spatial continuity check.
+  // A gate is flagged as aliased if its value differs from both its azimuthal neighbors
+  // by more than the Nyquist interval (30 m/s). These sharp discontinuities can't be
+  // real meteorological gradients — they're aliasing artifacts.
+  if (product === 'vel') {
+    const NYQUIST = 30.0; // m/s — typical KUDX Nyquist; conservative threshold
+    for (let r = 0; r < NUM_AZ; r++) {
+      const rPrev = (r + NUM_AZ - 1) % NUM_AZ;
+      const rNext = (r + 1) % NUM_AZ;
+      for (let g = 0; g < numGates; g++) {
+        const v    = radialData[r    * numGates + g];
+        if (v <= -900) continue;
+        const vp   = radialData[rPrev * numGates + g];
+        const vn   = radialData[rNext * numGates + g];
+        // If BOTH neighbors are valid AND both differ by > Nyquist, it's aliased
+        if (vp > -900 && vn > -900 &&
+            Math.abs(v - vp) > NYQUIST &&
+            Math.abs(v - vn) > NYQUIST) {
+          radialData[r * numGates + g] = -999;
+        }
+      }
+    }
+  }
+
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -433,22 +470,31 @@ export async function onRequest(context) {
     try { parsed = parseLevel2(rawBuf, product); }
     catch(e) { return new Response('Parse: '+e.message, { status:500, headers:CORS }); }
 
+    // null means no data found (mid-scan / product not in this file)
+    if (!parsed) return new Response('No data', { status:204, headers:CORS });
+
     const compact = encodeCompact(parsed);
     const gzipped = await gzipCompress(compact);
+
+    // Don't long-cache incomplete scans — they'll fill in as the volume scan progresses.
+    // Complete scans (≥700 azimuths populated) are immutable, cache 7 days.
+    const ttl = parsed.isComplete ? 604800 : 30;
 
     const headers = {
       ...CORS,
       'Content-Type':     'application/octet-stream',
       'Content-Encoding': 'gzip',
-      'Cache-Control':    'public, max-age=604800',
+      'Cache-Control':    `public, max-age=${ttl}`,
       'X-Cache':          'MISS',
       'X-Product':        product,
+      'X-Complete':       String(parsed.isComplete),
       'X-Compact-Bytes':  String(compact.byteLength),
       'X-Gzip-Bytes':     String(gzipped.byteLength),
     };
 
     const response = new Response(gzipped, { status:200, headers });
-    context.waitUntil(cache.put(cacheKey, response.clone()));
+    // Only cache complete scans in the edge cache
+    if (parsed.isComplete) context.waitUntil(cache.put(cacheKey, response.clone()));
     return response;
   }
 
