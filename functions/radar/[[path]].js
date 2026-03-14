@@ -462,7 +462,7 @@ export async function onRequest(context) {
 
       // Parse
       const parsed = parseLevel2(rawBuf, product);
-      if (!parsed) return new Response('No data', { status:204, headers:CORS });
+      if (!parsed) return new Response(null, { status:204, headers:CORS });
 
       // Encode + compress
       const compact = encodeCompact(parsed);
