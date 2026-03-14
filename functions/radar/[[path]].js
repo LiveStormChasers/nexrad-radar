@@ -295,23 +295,24 @@ function parseLevel2(rawBuf, product = 'ref') {
   }
 
   // Velocity: remove range-folded / aliased gates using spatial continuity check.
-  // A gate is flagged as aliased if its value differs from both its azimuthal neighbors
-  // by more than the Nyquist interval (30 m/s). These sharp discontinuities can't be
-  // real meteorological gradients — they're aliasing artifacts.
+  // NEXRAD Nyquist velocities are typically 8–33 m/s depending on VCP/PRF.
+  // Low-PRF VCPs (e.g. VCP 31) have Nyquist ~10 m/s — aliased gates jump by
+  // 2×Nyquist ≈ 20 m/s from their neighbors. We use 15 m/s threshold to catch these
+  // while preserving real gradients (even strong mesocyclones rarely exceed 10 m/s
+  // per 0.5° azimuth step at adjacent rays).
   if (product === 'vel') {
-    const NYQUIST = 30.0; // m/s — typical KUDX Nyquist; conservative threshold
+    const NYQUIST_THRESH = 15.0; // m/s
     for (let r = 0; r < NUM_AZ; r++) {
       const rPrev = (r + NUM_AZ - 1) % NUM_AZ;
       const rNext = (r + 1) % NUM_AZ;
       for (let g = 0; g < numGates; g++) {
-        const v    = radialData[r    * numGates + g];
+        const v  = radialData[r     * numGates + g];
         if (v <= -900) continue;
-        const vp   = radialData[rPrev * numGates + g];
-        const vn   = radialData[rNext * numGates + g];
-        // If BOTH neighbors are valid AND both differ by > Nyquist, it's aliased
+        const vp = radialData[rPrev * numGates + g];
+        const vn = radialData[rNext * numGates + g];
         if (vp > -900 && vn > -900 &&
-            Math.abs(v - vp) > NYQUIST &&
-            Math.abs(v - vn) > NYQUIST) {
+            Math.abs(v - vp) > NYQUIST_THRESH &&
+            Math.abs(v - vn) > NYQUIST_THRESH) {
           radialData[r * numGates + g] = -999;
         }
       }
