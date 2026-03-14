@@ -746,22 +746,41 @@ async function loadStation() {
     buildTicks(frames.length);
     setStatus('');
 
-    // Load latest frame immediately for display, then all others in parallel
-    await fetchAndProcess(frameIdx);
-    if (gen !== loadGen) return;
-    updateTickLoaded(frameIdx);
-    redrawCurrentFrame();
+    // Load latest frame first — but it may be mid-scan/empty (204).
+    // Walk backward to find the most recent frame with actual data.
+    let firstLoadIdx = frames.length - 1;
+    while (firstLoadIdx >= 0) {
+      await fetchAndProcess(firstLoadIdx);
+      if (gen !== loadGen) return;
+      if (frames[firstLoadIdx].compactBuf) break; // got real data
+      firstLoadIdx--;
+    }
+    if (firstLoadIdx < 0) { setStatus('No data'); return; }
 
-    // Fire all remaining frames in parallel (OpenSnow loads everything at once)
+    // Jump to and display the most recent frame that has data
+    frameIdx = firstLoadIdx;
+    updateTickLoaded(frameIdx);
+    setFrame(frameIdx, true);
+
+    // Fire all remaining frames in parallel
     await Promise.all(
-      frames.slice(0, frameIdx).map(async (_, i) => {
+      frames.map(async (f, i) => {
+        if (i === firstLoadIdx) return; // already loaded
         if (gen !== loadGen) return;
         await fetchAndProcess(i);
         if (gen !== loadGen) return;
-        updateTickLoaded(i);
+        if (f.compactBuf) updateTickLoaded(i);
       })
     );
     if (gen !== loadGen) return;
+
+    // After everything loads, jump to the true latest frame that has data
+    const latestWithData = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
+    if (latestWithData > frameIdx) {
+      frameIdx = latestWithData;
+      setFrame(frameIdx, true);
+    }
+
     document.getElementById('liveTag').style.display = '';
 
     // Live refresh: check for new frames every 60s
@@ -798,13 +817,14 @@ async function liveRefresh(gen) {
           const fi = frames.length - newKeys.length + i;
           await fetchAndProcess(fi);
           if (gen !== loadGen) return;
-          updateTickLoaded(fi);
+          if (frames[fi].compactBuf) updateTickLoaded(fi);
         })
       );
       if (gen !== loadGen) return;
-      // If we were on the latest frame, jump to new latest
-      if (frameIdx === frames.length - newKeys.length - 1) {
-        setFrame(frames.length - 1);
+      // Jump to newest frame with data
+      const latestWithData = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
+      if (latestWithData > frameIdx) {
+        setFrame(latestWithData, true);
       }
     }
   } catch(e) { /* silent */ }
@@ -968,7 +988,9 @@ function setFrame(idx, force) {
   const prod = curProduct === 'VEL' ? 'Velocity' : curProduct === 'CC' ? 'Corr. Coeff.' : 'Reflectivity';
   const lbl  = frames[idx]?.label || '';
   document.getElementById('scSub').textContent = lbl ? `${prod} • 0.5° · ${lbl}` : `${prod} • 0.5°`;
-  document.getElementById('liveTag').style.display = idx === frames.length - 1 ? '' : 'none';
+  // Show LIVE tag when on the latest frame that actually has data
+  const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
+  document.getElementById('liveTag').style.display = idx === latestLoaded ? '' : 'none';
 
   redrawCurrentFrame();
 
