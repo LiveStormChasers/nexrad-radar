@@ -186,31 +186,35 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
+  // For VEL/CC: collect data from ALL elevation cuts, then pick the best one.
+  // Different VCPs have VEL at different elevations with different range/resolution.
+  // OpenSnow picks the cut with the most gates — we do the same.
+  // Map: elevIdx → { radialData, numGates, firstGateM, gateSizeM, refData, refNumGates, azAngles, populated }
+  const elevData = {};
+
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
 
+    // REF: elevation 1 only
     if (product === 'ref') {
       if (elevIdx !== 1) return;
-    } else {
-      if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     }
 
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
 
-    // Scan all blocks in this radial for the primary + REF (for masking)
     let primaryPtr = -1, primaryNG = 0, primaryScl = 1, primaryOfs = 0, primaryFG = 0, primaryGS = 0;
-    let refPtr     = -1, refNG     = 0, refScl     = 1, refOfs     = 0;
+    let refPtr = -1, refNG = 0, refScl = 1, refOfs = 0;
 
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
-      if (chunk[bbase] !== 68) continue; // must start with 'D'
+      if (chunk[bbase] !== 68) continue;
       const b1 = chunk[bbase+1], b2 = chunk[bbase+2], b3 = chunk[bbase+3];
       const bdv = new DataView(chunk.buffer, bbase);
       const ng  = bdv.getUint16(8,  false);
@@ -223,46 +227,92 @@ function parseLevel2(rawBuf, product = 'ref') {
         primaryPtr = ptr; primaryNG = ng; primaryScl = scl; primaryOfs = ofs;
         primaryFG = fg; primaryGS = gs;
       }
-      // Also grab REF for masking (when processing VEL or CC)
       if (product !== 'ref' && b1 === REF_ID[0] && b2 === REF_ID[1] && b3 === REF_ID[2]) {
         refPtr = ptr; refNG = ng; refScl = scl; refOfs = ofs;
       }
     }
 
-    if (primaryPtr < 0) return; // primary block not found in this radial
+    if (primaryPtr < 0) return;
 
-    // Initialize data arrays on first successful radial
-    if (!radialData) {
-      numGates   = primaryNG;
-      firstGateM = primaryFG;
-      gateSizeM  = primaryGS;
-      radialData = new Float32Array(NUM_AZ * primaryNG).fill(-999);
-      foundElevIdx = elevIdx;
-      if (product !== 'ref') {
-        refNumGates = refNG > 0 ? refNG : primaryNG;
-        refData = new Float32Array(NUM_AZ * refNumGates).fill(-999);
+    // REF: write directly to shared arrays
+    if (product === 'ref') {
+      if (!radialData) {
+        numGates = primaryNG; firstGateM = primaryFG; gateSizeM = primaryGS;
+        radialData = new Float32Array(NUM_AZ * primaryNG).fill(-999);
+        foundElevIdx = elevIdx;
       }
+      azAngles[azBin] = az;
+      const dataOff = base + primaryPtr + 28;
+      for (let g = 0; g < primaryNG && g < numGates; g++) {
+        if (dataOff + g >= chunk.length) break;
+        const raw = chunk[chunk.byteOffset + dataOff + g];
+        radialData[azBin * numGates + g] = raw <= 1 ? -999 : (raw - primaryOfs) / primaryScl;
+      }
+      return;
     }
 
-    azAngles[azBin] = az;
+    // VEL/CC: collect per-elevation
+    if (!elevData[elevIdx]) {
+      const az0 = new Float32Array(NUM_AZ);
+      for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
+      elevData[elevIdx] = {
+        numGates: primaryNG, firstGateM: primaryFG, gateSizeM: primaryGS,
+        radialData: new Float32Array(NUM_AZ * primaryNG).fill(-999),
+        azAngles: az0,
+        refData: null, refNumGates: 0,
+        populated: 0
+      };
+      if (refNG > 0) {
+        elevData[elevIdx].refNumGates = refNG;
+        elevData[elevIdx].refData = new Float32Array(NUM_AZ * refNG).fill(-999);
+      }
+    }
+    const ed = elevData[elevIdx];
 
-    // Read primary block
+    // Only write if this radial hasn't been written yet (first elevation scan wins per azimuth)
+    if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
+    ed.azAngles[azBin] = az;
+
     const dataOff = base + primaryPtr + 28;
-    for (let g = 0; g < primaryNG && g < numGates; g++) {
+    for (let g = 0; g < primaryNG && g < ed.numGates; g++) {
       if (dataOff + g >= chunk.length) break;
       const raw = chunk[chunk.byteOffset + dataOff + g];
-      radialData[azBin * numGates + g] = raw <= 1 ? -999 : (raw - primaryOfs) / primaryScl;
+      ed.radialData[azBin * ed.numGates + g] = raw <= 1 ? -999 : (raw - primaryOfs) / primaryScl;
     }
 
-    // Read co-located REF for masking
-    if (product !== 'ref' && refPtr >= 0 && refData) {
+    if (refPtr >= 0 && ed.refData) {
       const refOff = base + refPtr + 28;
-      for (let g = 0; g < refNG && g < refNumGates; g++) {
+      for (let g = 0; g < refNG && g < ed.refNumGates; g++) {
         if (refOff + g >= chunk.length) break;
         const raw = chunk[chunk.byteOffset + refOff + g];
-        refData[azBin * refNumGates + g] = raw <= 1 ? -999 : (raw - refOfs) / refScl;
+        ed.refData[azBin * ed.refNumGates + g] = raw <= 1 ? -999 : (raw - refOfs) / refScl;
       }
     }
+  }
+
+  // VEL/CC: pick the elevation with the most gates (best range coverage).
+  // This matches OpenSnow's approach — they get 1832-gate velocity by using
+  // the longest-range VEL cut, not just the first one found.
+  if (product !== 'ref') {
+    const keys = Object.keys(elevData);
+    if (keys.length === 0) return null;
+    let best = null;
+    for (const k of keys) {
+      const ed = elevData[k];
+      if (!best ||
+          ed.numGates > best.numGates ||
+          (ed.numGates === best.numGates && ed.populated > best.populated)) {
+        best = ed;
+        foundElevIdx = +k;
+      }
+    }
+    numGates    = best.numGates;
+    firstGateM  = best.firstGateM;
+    gateSizeM   = best.gateSizeM;
+    radialData  = best.radialData;
+    refData     = best.refData;
+    refNumGates = best.refNumGates;
+    for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
   }
 
   if (!radialData) {
