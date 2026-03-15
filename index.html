@@ -721,7 +721,7 @@ async function selectStation(id, lat, lng) {
 
   map.flyTo({ center: [lng, lat], zoom: 7, duration: 800 });
 
-  await loadStation();
+  loadStation(); // intentionally not awaited — loads in background while map flies
 }
 
 let loadGen = 0;
@@ -734,6 +734,7 @@ async function loadStation() {
   frames = []; frameIdx = 0;
   buildTicks(0);
   document.getElementById('liveTag').style.display = 'none';
+  if (radarLayer) radarLayer.clear();
 
   try {
     const r   = await fetch(`/radar/list/${curSite}`);
@@ -742,48 +743,36 @@ async function loadStation() {
     if (!lst.length) { setStatus('No data'); return; }
 
     frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' }));
-    frameIdx = frames.length - 1;
     buildTicks(frames.length);
     setStatus('');
 
-    // Load latest frame first — but it may be mid-scan/empty (204).
-    // Walk backward to find the most recent frame with actual data.
-    let firstLoadIdx = frames.length - 1;
-    while (firstLoadIdx >= 0) {
-      await fetchAndProcess(firstLoadIdx);
-      if (gen !== loadGen) return;
-      if (frames[firstLoadIdx].compactBuf) break; // got real data
-      firstLoadIdx--;
-    }
-    if (firstLoadIdx < 0) { setStatus('No data'); return; }
+    // Fire ALL frames simultaneously.
+    // As each one completes, if it's the most recent with real data, display it immediately.
+    // This means the user sees radar within ~1s instead of waiting for a serial walk-backward.
+    let displayedIdx = -1;
 
-    // Jump to and display the most recent frame that has data
-    frameIdx = firstLoadIdx;
-    updateTickLoaded(frameIdx);
-    setFrame(frameIdx, true);
-
-    // Fire all remaining frames in parallel
     await Promise.all(
       frames.map(async (f, i) => {
-        if (i === firstLoadIdx) return; // already loaded
         if (gen !== loadGen) return;
         await fetchAndProcess(i);
         if (gen !== loadGen) return;
-        if (f.compactBuf) updateTickLoaded(i);
+
+        if (f.compactBuf) {
+          updateTickLoaded(i);
+          // Show this frame if it's the latest complete one so far
+          if (i > displayedIdx) {
+            displayedIdx = i;
+            frameIdx = i;
+            setFrame(i, true);
+          }
+        }
       })
     );
-    if (gen !== loadGen) return;
 
-    // After everything loads, jump to the true latest frame that has data
-    const latestWithData = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
-    if (latestWithData > frameIdx) {
-      frameIdx = latestWithData;
-      setFrame(frameIdx, true);
-    }
+    if (gen !== loadGen) return;
+    if (displayedIdx < 0) { setStatus('No data'); return; }
 
     document.getElementById('liveTag').style.display = '';
-
-    // Live refresh: check for new frames every 60s
     liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
   } catch(e) {
     if (gen !== loadGen) return;
