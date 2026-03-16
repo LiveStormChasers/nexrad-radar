@@ -305,8 +305,8 @@ function parseLevel2(rawBuf, product = 'ref') {
     const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (!allCuts.length) return null;
     const best = candidates.length
-      ? candidates.reduce((b, e) => e.populated > b.populated ? e : b)
-      : allCuts.reduce((b, e) => e.populated > b.populated ? e : b);
+      ? candidates.reduce((b, e) => e.numGates > b.numGates ? e : b)
+      : allCuts.reduce((b, e) => e.numGates > b.numGates ? e : b);
     if (!best) return null;
 
     numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
@@ -322,8 +322,8 @@ function parseLevel2(rawBuf, product = 'ref') {
         const v = radialData[i];
         if (v > -900 && Math.abs(v) > nyq) nyq = Math.abs(v);
       }
-      // Only dealias when Nyquist < 12 m/s (~27 mph) — genuine clear-air aliasing
-      if (nyq > 0.5 && nyq < 12.0) {
+      // Dealias all scans
+      if (nyq > 0.5) {
         const twoNyq = 2 * nyq;
         for (let r = 0; r < NUM_AZ; r++) {
           const row = r * numGates;
@@ -355,9 +355,11 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
   const isComplete = populatedAz >= 700; // full 720-ray sweep ≈ complete
+  // Don't serve partial velocity scans — they show as ugly wedges
+  if (!isComplete && product === 'vel') return null;
 
   // Apply REF quality mask to VEL/CC: zero out gates without a real echo
-  if (product !== 'ref' && refData) {
+  if (product === 'cc' && refData) {
     const refGateRatio = refNumGates / numGates;
     for (let r = 0; r < NUM_AZ; r++) {
       for (let g = 0; g < numGates; g++) {
@@ -495,7 +497,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v9-${product}/${rest}`;
+      const cacheId = `v11-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
