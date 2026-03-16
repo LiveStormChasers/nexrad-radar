@@ -364,35 +364,57 @@ function ccToRGBA(cc) {
   return [...CC_STOPS[CC_STOPS.length-1].ce];
 }
 
-// ── Compact velocity renderer ─────────────────────────────────────────────
-// Compact format for VEL: same header/structure, but gate values encode
-// velocity = (val - 129) * 0.5 m/s  (val 0=nodata, 1=range-folded, 2..254=data)
+// ── Compact velocity renderer — with AtticRadar pyart region-based dealiasing ──
 function renderCompactVelFlat(buf) {
   const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
-  const rgba = new Uint8Array(numAz * numGates * 4);
+
+  // Decode raw bytes to float m/s, find Nyquist
+  const vel2d = [];
+  let nyq = 0;
   for (let r = 0; r < numAz; r++) {
-    const src    = gateOffset + r * numGates;
-    const dstRow = r * numGates * 4;
+    const src = gateOffset + r * numGates;
+    const row = [];
     for (let g = 0; g < numGates; g++) {
       const val = data[src + g];
-      if (val === 0) continue;
+      if (val <= 1) { row.push(null); continue; }
+      const v = (val - 129) * 0.5;
+      row.push(v);
+      if (Math.abs(v) > nyq) nyq = Math.abs(v);
+    }
+    vel2d.push(row);
+  }
+
+  // Run AtticRadar's exact pyart region-based dealiasing
+  let dealiased = vel2d;
+  if (nyq > 0.5) {
+    try { dealiased = dealias(vel2d, nyq); } catch(e) { dealiased = vel2d; }
+  }
+
+  // Render using LUT
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const srcRow = gateOffset + r * numGates;
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const origVal = data[srcRow + g];
+      if (origVal === 0) continue;
       const pi = dstRow + g * 4;
-      if (val === 1) {
-        // Range-folded: AtticRadar RF color rgb(139,0,218)
+      if (origVal === 1) {
         rgba[pi]=139; rgba[pi+1]=0; rgba[pi+2]=218; rgba[pi+3]=255;
         continue;
       }
-      const mps = (val - 129) * 0.5;
-      const rgb = velToRGBA(mps);
-      if (!rgb) continue;
-      rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
+      const mps = dealiased[r][g];
+      if (mps === null || mps === undefined) continue;
+      const val = Math.max(2, Math.min(254, Math.round(mps / 0.5) + 129));
+      const i = val * 4;
+      rgba[pi]=VEL_LUT[i]; rgba[pi+1]=VEL_LUT[i+1]; rgba[pi+2]=VEL_LUT[i+2]; rgba[pi+3]=255;
     }
   }
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
 }
 
 // ── Pyart region-based dealiasing (ported from AtticRadar/dealias.js) ────────
-function dealias_region(velocities, nyquist_vel) {
+function dealias(velocities, nyquist_vel) {
   const MASKED=-64.5,splits=3,gapX=99,gapY=100,wrap=true;
   function c2(a){return a.map(r=>r.slice());}
   function ls(s,e,n){const a=[],st=(e-s)/(n-1);for(let i=0;i<n;i++)a.push(s+st*i);return a;}
@@ -605,7 +627,7 @@ function renderLevel2VelFlat(buf) {
       }
       vel2d.push(row);
     }
-    const dealiased = dealias_region(vel2d, nyquist);
+    const dealiased = dealias(vel2d, nyquist);
     for (let r = 0; r < NUM_AZ; r++) {
       for (let g = 0; g < numGates; g++) {
         if (radialData[r * numGates + g] <= -900) continue;
