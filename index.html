@@ -127,6 +127,20 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 .mapboxgl-ctrl-attrib a{color:#4a8090!important}
 .mapboxgl-ctrl-bottom-right{bottom:140px!important}
 .mapboxgl-ctrl-bottom-left{bottom:140px!important}
+
+  #radarSheet{position:fixed;bottom:0;left:0;right:0;z-index:950;pointer-events:auto;animation:slideUp .2s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  #sheetInner{background:#0d1420;border-top:1px solid #253040;border-radius:16px 16px 0 0;padding:16px 20px 32px;max-width:540px;margin:0 auto}
+  .sheet-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .sheet-label{font-size:13px;font-weight:600;color:#e8f0f8}
+  .sheet-site{font-size:13px;color:#8aaabb}
+  .sheet-divider{height:1px;background:#1e2a38;margin:4px 0 16px}
+  .sheet-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .spill{background:none;border:1px solid #2a3a4a;color:#8aaabb;font-size:12px;font-weight:600;padding:6px 14px;border-radius:9999px;cursor:pointer;transition:all .15s}
+  .spill.active{background:#3b9afa;border-color:#3b9afa;color:#fff}
+  .spill:not(.active):hover{border-color:#3b9afa;color:#c8daea}
+  #sheetBackdrop{display:none;position:fixed;inset:0;z-index:940;background:rgba(0,0,0,.4)}
+  .sc-chevron{transition:transform .2s}
 </style>
 </head>
 <body>
@@ -137,11 +151,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" stroke="currentColor" stroke-width="2" fill="none" opacity=".4"/></svg>
     <span id="siteBtnLabel">Select Site</span>
   </button>
-  <div id="productToggle">
-    <button class="ptab active" data-p="REF">Reflectivity</button>
-    <button class="ptab" data-p="VEL">Velocity</button>
-    <button class="ptab" data-p="CC">Corr. Coeff.</button>
-  </div>
+
   <div class="spacer"></div>
   <div id="loadStatus"></div>
   <div id="liveTag">● LIVE</div>
@@ -159,7 +169,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 
   <!-- Station card pill, floats above panel -->
   <div id="stationCard">
-    <div id="scPill">
+    <div id="scPill" onclick="toggleSheet()">
       <div class="sc-icon">
         <svg width="22" height="22" viewBox="0 0 24 24" stroke-width="1.5" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M22 12C22 17.5242 17.5242 22 12 22C6.47581 22 2 17.5242 2 12C2 6.47581 6.47581 2 12 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -171,7 +181,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
         <div class="sc-name" id="scName">—</div>
         <div class="sc-sub" id="scSub">Reflectivity • 0.5°</div>
       </div>
-      <div class="sc-chevron">
+      <div class="sc-chevron" id="scChevron">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -179,6 +189,22 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
     </div>
   </div>
 
+  <!-- Radar Settings Sheet (OpenSnow style) -->
+  <div id="radarSheet" style="display:none">
+    <div id="sheetInner">
+      <div class="sheet-row">
+        <span class="sheet-label">Radar Site</span>
+        <span class="sheet-site" id="sheetSiteName">—</span>
+      </div>
+      <div class="sheet-divider"></div>
+      <div class="sheet-row"><span class="sheet-label">Radar Data</span></div>
+      <div class="sheet-pills">
+        <button class="spill active" data-p="REF">Reflectivity</button>
+        <button class="spill" data-p="VEL">Velocity</button>
+        <button class="spill" data-p="CC">Corr. Coeff.</button>
+      </div>
+    </div>
+  </div>
   <!-- Glass panel: timeline + controls -->
   <div id="panel">
 
@@ -845,25 +871,36 @@ async function liveRefresh(gen) {
 // ── Frame loading ─────────────────────────────────────────────────────────
 async function fetchAndProcess(fi) {
   const f = frames[fi];
-  const pParam = curProduct === 'VEL' ? '?p=vel' : curProduct === 'CC' ? '?p=cc' : '';
-  const velType = curProduct === 'VEL' ? 'vel' : curProduct === 'CC' ? 'cc' : null;
-  // Extract station from file key (e.g. "KLVX_20260316_031856.bz2" → "KLVX")
   const fileSite = f.key.match(/^([A-Z]{4})_/)?.[1] || curSite;
+
+  // Velocity: always fetch raw Level-2 directly (same as AtticRadar)
+  // Avoids CF worker complexity — renderLevel2VelFlat handles parsing + dealiasing
+  if (curProduct === 'VEL') {
+    const r2 = await fetch(`/radar/file/${fileSite}/${f.key}`);
+    if (!r2.ok) throw new Error(r2.status);
+    f.compactBuf = await r2.arrayBuffer();
+    f.msgType    = 'level2_vel';
+    f.maxRangeKm = 460;
+    return;
+  }
+
+  // Reflectivity / CC: use CF worker (fast compact format)
+  const pParam = curProduct === 'CC' ? '?p=cc' : '';
   try {
     const r = await fetch(`/radar/process/${fileSite}/${f.key}${pParam}`);
-    if (r.status === 204) return; // no data for this product in this file (mid-scan)
+    if (r.status === 204) return;
     if (!r.ok) throw new Error(r.status);
     let buf = await r.arrayBuffer();
     const h = new Uint8Array(buf, 0, 2);
     if (h[0] === 0x1f && h[1] === 0x8b) buf = await gunzip(buf);
     f.compactBuf = buf;
-    f.msgType    = velType ? `compact_${velType}` : 'compact';
+    f.msgType    = curProduct === 'CC' ? 'compact_cc' : 'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
   } catch(e) {
     const r2 = await fetch(`/radar/file/${fileSite}/${f.key}`);
     if (!r2.ok) throw new Error(r2.status);
     f.compactBuf = await r2.arrayBuffer();
-    f.msgType    = velType ? `level2_${velType}` : 'level2';
+    f.msgType    = curProduct === 'CC' ? 'level2_cc' : 'level2';
     f.maxRangeKm = 460;
   }
 }
@@ -935,11 +972,12 @@ function initSlider() {
   document.getElementById('bFwd').onclick  = () => { stopPlay(); setFrame(frameIdx + 1); };
 
   // Product toggle
-  document.querySelectorAll('.ptab').forEach(btn => {
+  document.querySelectorAll('.ptab, .spill').forEach(btn => {
     btn.addEventListener('click', () => {
       if (btn.dataset.p === curProduct) return;
       curProduct = btn.dataset.p;
-      document.querySelectorAll('.ptab').forEach(b => b.classList.toggle('active', b.dataset.p === curProduct));
+      document.querySelectorAll('.ptab, .spill').forEach(b => b.classList.toggle('active', b.dataset.p === curProduct));
+      closeSheet();
       updateLegend();
       if (curSite) {
         frames.forEach(f => { f.compactBuf = null; f.msgType = 'compact'; });
@@ -1085,5 +1123,23 @@ function updateLegend() {
 
 function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
 </script>
+
+  <div id="sheetBackdrop" onclick="closeSheet()"></div>
+  <script>
+function toggleSheet(){
+  const s=document.getElementById('radarSheet'),b=document.getElementById('sheetBackdrop'),c=document.getElementById('scChevron');
+  const open=s.style.display!=='none';
+  s.style.display=open?'none':'block';
+  b.style.display=open?'none':'block';
+  c.style.transform=open?'':'rotate(180deg)';
+  document.querySelectorAll('.spill').forEach(x=>x.classList.toggle('active',x.dataset.p===curProduct));
+  document.getElementById('sheetSiteName').textContent=curSite||'—';
+}
+function closeSheet(){
+  document.getElementById('radarSheet').style.display='none';
+  document.getElementById('sheetBackdrop').style.display='none';
+  document.getElementById('scChevron').style.transform='';
+}
+  </script>
 </body>
 </html>
