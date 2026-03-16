@@ -361,8 +361,6 @@ function renderLevel2VelFlat(buf) {
   let pos = 24;
   const NUM_AZ = 720;
   const REF_MASK_DBZ = 5.0;
-
-  // Collect ALL elevation cuts, then pick fewest gates (= highest Nyquist = least folding)
   const elevData = {};
 
   while (pos + 4 <= data.length) {
@@ -392,10 +390,8 @@ function renderLevel2VelFlat(buf) {
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
-
     let velPtr=-1,velNG=0,velScl=1,velOfs=0,velFG=0,velGS=0;
     let refPtr=-1,refNG=0,refScl=1,refOfs=0;
-
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
@@ -409,9 +405,7 @@ function renderLevel2VelFlat(buf) {
       if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs; }
       if (b1===82&&b2===69&&b3===70) { refPtr=ptr;refNG=ng;refScl=scl;refOfs=ofs; }
     }
-
     if (velPtr < 0) return;
-
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
       for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
@@ -427,7 +421,6 @@ function renderLevel2VelFlat(buf) {
     const ed = elevData[elevIdx];
     if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
     ed.azAngles[azBin] = az;
-
     const velOff=base+velPtr+28;
     for(let g=0;g<velNG&&g<ed.numGates;g++){
       if(velOff+g>=chunk.length)break;
@@ -444,26 +437,47 @@ function renderLevel2VelFlat(buf) {
     }
   }
 
-  // Pick fewest-gates elevation with ≥360 populated azimuths (highest Nyquist)
-  const keys = Object.keys(elevData);
-  if (!keys.length) throw new Error('No VEL data found in any elevation');
-  let best = null;
-  for (const k of keys) {
-    const ed = elevData[k];
-    if (ed.populated < 360) continue;
-    if (!best || ed.numGates < best.numGates ||
-        (ed.numGates === best.numGates && ed.populated > best.populated)) best = ed;
-  }
-  if (!best) {
-    // fallback: most populated
-    for (const k of keys) {
-      const ed = elevData[k];
-      if (!best || ed.populated > best.populated) best = ed;
+  const candidates = Object.values(elevData).filter(ed => ed.populated >= 360);
+  if (!candidates.length) throw new Error('No VEL data found in any elevation');
+  candidates.sort((a, b) => a.numGates - b.numGates);
+  const srCut = candidates[0];
+  const lrCut = candidates[candidates.length - 1];
+
+  // Dual-cut dealiasing: use SR (high Nyquist) to unfold LR (low Nyquist)
+  if (srCut !== lrCut && srCut.numGates < lrCut.numGates * 0.9) {
+    let nyquistLR = 0;
+    for (let i = 0; i < NUM_AZ * lrCut.numGates; i++) {
+      const v = lrCut.radialData[i];
+      if (v > -900 && Math.abs(v) > nyquistLR) nyquistLR = Math.abs(v);
+    }
+    nyquistLR = Math.max(nyquistLR, 1.0);
+    const twoNyq = 2 * nyquistLR;
+    const srNG = srCut.numGates;
+    for (let r = 0; r < NUM_AZ; r++) {
+      const lrRow = r * lrCut.numGates;
+      const srRow = r * srNG;
+      for (let g = 0; g < srNG && g < lrCut.numGates; g++) {
+        const lrV = lrCut.radialData[lrRow + g];
+        if (lrV <= -900) continue;
+        const srV = srCut.radialData[srRow + g];
+        if (srV <= -900) continue;
+        const n = Math.round((srV - lrV) / twoNyq);
+        if (n !== 0) lrCut.radialData[lrRow + g] = lrV + n * twoNyq;
+      }
+      for (let g = srNG; g < lrCut.numGates; g++) {
+        const lrV = lrCut.radialData[lrRow + g];
+        if (lrV <= -900) continue;
+        let prevV = -999;
+        for (let pg = g - 1; pg >= 0 && prevV <= -900; pg--) prevV = lrCut.radialData[lrRow + pg];
+        if (prevV <= -900) continue;
+        const diff = lrV - prevV;
+        if (diff > nyquistLR)       lrCut.radialData[lrRow + g] = lrV - twoNyq;
+        else if (diff < -nyquistLR) lrCut.radialData[lrRow + g] = lrV + twoNyq;
+      }
     }
   }
-  if (!best) throw new Error('No VEL data found in any elevation');
 
-  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
+  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = lrCut;
 
   // REF quality mask
   if (refData) {
@@ -488,7 +502,6 @@ function renderLevel2VelFlat(buf) {
   const maxRangeM = firstGateM + numGates * gateSizeM;
   return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM / 1000 };
 }
-
 
 
 // ── Compact CC renderer ───────────────────────────────────────────────────
