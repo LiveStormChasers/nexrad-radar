@@ -201,14 +201,25 @@ function parseLevel2(rawBuf, product = 'ref') {
 
     let primaryPtr = -1, primaryNG = 0, primaryScl = 1, primaryOfs = 0, primaryFG = 0, primaryGS = 0;
     let refPtr = -1, refNG = 0, refScl = 1, refOfs = 0;
+    let radNyquist = 0;
 
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
-      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
-      if (chunk[bbase] !== 68) continue;
-      const b1 = chunk[bbase+1], b2 = chunk[bbase+2], b3 = chunk[bbase+3];
+      if (bbase + 4 > chunk.byteOffset + chunk.length) continue;
+      const t0 = chunk[bbase], b1 = chunk[bbase+1], b2 = chunk[bbase+2], b3 = chunk[bbase+3];
+
+      // RAD block (type 'R' = 82, name 'R','A','D' = 82,65,68): contains Nyquist at offset 12
+      if (t0 === 82 && b1 === 82 && b2 === 65 && b3 === 68) {
+        if (bbase + 14 <= chunk.byteOffset + chunk.length) {
+          const rbdv = new DataView(chunk.buffer, bbase);
+          radNyquist = rbdv.getUint16(12, false) * 0.01; // 0.01 m/s units
+        }
+        continue;
+      }
+
+      if (t0 !== 68) continue; // only D blocks below
       const bdv = new DataView(chunk.buffer, bbase);
       const ng  = bdv.getUint16(8,  false);
       const fg  = bdv.getUint16(10, false);
@@ -248,15 +259,13 @@ function parseLevel2(rawBuf, product = 'ref') {
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
       for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
-      // Nyquist velocity is at offset 24 in the radial header (u16 BE, units 0.01 m/s)
-      const nyquist = dv2.getUint16(24, false) * 0.01;
       elevData[elevIdx] = {
         numGates: primaryNG, firstGateM: primaryFG, gateSizeM: primaryGS,
         radialData: new Float32Array(NUM_AZ * primaryNG).fill(-999),
         azAngles: az0,
         refData: null, refNumGates: 0,
         populated: 0,
-        nyquist
+        nyquist: radNyquist
       };
       if (refNG > 0) {
         elevData[elevIdx].refNumGates = refNG;
@@ -264,6 +273,7 @@ function parseLevel2(rawBuf, product = 'ref') {
       }
     }
     const ed = elevData[elevIdx];
+    if (radNyquist > 0 && ed.nyquist === 0) ed.nyquist = radNyquist;
 
     // Only write if this radial hasn't been written yet (first elevation scan wins per azimuth)
     if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
@@ -480,7 +490,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v3-${product}/${rest}`;
+      const cacheId = `v4-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
