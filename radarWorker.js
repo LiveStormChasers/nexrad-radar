@@ -452,7 +452,7 @@ function renderLevel2VelFlat(buf) {
   if (!candidates.length) throw new Error('No VEL data found in any elevation');
   const best = candidates.reduce((b, e) => e.populated > b.populated ? e : b);
 
-  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates, nyquist } = best;
+  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
   // Only dealias low-Nyquist clear-air scans (Nyquist < 12 m/s)
   // Storm scans have Nyquist 20-35 m/s — raw data is already correct
