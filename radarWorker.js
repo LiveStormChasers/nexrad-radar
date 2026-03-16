@@ -339,11 +339,16 @@ function renderCompactVelFlat(buf) {
     const dstRow = r * numGates * 4;
     for (let g = 0; g < numGates; g++) {
       const val = data[src + g];
-      if (val <= 1) continue;
+      if (val === 0) continue;
+      const pi = dstRow + g * 4;
+      if (val === 1) {
+        // Range-folded: AtticRadar RF color rgb(139,0,218)
+        rgba[pi]=139; rgba[pi+1]=0; rgba[pi+2]=218; rgba[pi+3]=255;
+        continue;
+      }
       const mps = (val - 129) * 0.5;
       const rgb = velToRGBA(mps);
       if (!rgb) continue;
-      const pi = dstRow + g * 4;
       rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
     }
   }
