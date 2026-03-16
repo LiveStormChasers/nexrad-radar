@@ -337,7 +337,7 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts };
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete: true, debugCuts };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -462,7 +462,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v13-${product}/${rest}`;
+      const cacheId = `v14-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
