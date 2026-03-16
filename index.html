@@ -747,43 +747,54 @@ async function loadStation() {
     buildTicks(frames.length);
     setStatus('');
 
-    // Fire ALL frames in parallel. Show the latest complete frame as soon as it arrives.
-    let displayedIdx = -1;
-
-    await Promise.all(
-      frames.map(async (f, i) => {
-        if (gen !== loadGen) return;
-        try {
-          await fetchAndProcess(i);
-        } catch(e) {
-          f.failed = true;
-          updateTickEmpty(i);
-          return;
-        }
-        if (gen !== loadGen) return;
-
-        if (f.compactBuf) {
+    // Step 1: Load the last few frames first (newest), show as soon as one succeeds
+    const recentIdx = frames.length - 1;
+    let shown = false;
+    for (let i = recentIdx; i >= Math.max(0, recentIdx - 4); i--) {
+      if (gen !== loadGen) return;
+      try {
+        await fetchAndProcess(i);
+        if (frames[i].compactBuf) {
           updateTickLoaded(i);
-          if (i > displayedIdx) {
-            displayedIdx = i;
-            frameIdx = i;
-            setFrame(i, true);
-          }
+          frameIdx = i;
+          setFrame(i, true);
+          setStatus('');
+          document.getElementById('liveTag').style.display = '';
+          shown = true;
+          break;
         } else {
-          f.failed = true;
+          frames[i].failed = true;
           updateTickEmpty(i);
         }
-      })
-    );
+      } catch(e) {
+        frames[i].failed = true;
+        updateTickEmpty(i);
+      }
+    }
 
+    if (!shown) { setStatus('No data'); return; }
     if (gen !== loadGen) return;
 
-    // After all done, jump to the latest frame that actually has data
-    const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
-    if (latestLoaded < 0) { setStatus('No data'); return; }
-    if (latestLoaded !== frameIdx) setFrame(latestLoaded, true);
+    // Step 2: Load remaining frames in background (all in parallel)
+    const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
+    Promise.all(remaining.map(async i => {
+      if (gen !== loadGen) return;
+      try {
+        await fetchAndProcess(i);
+        if (gen !== loadGen) return;
+        if (frames[i].compactBuf) updateTickLoaded(i);
+        else { frames[i].failed = true; updateTickEmpty(i); }
+      } catch(e) {
+        frames[i].failed = true;
+        updateTickEmpty(i);
+      }
+    })).then(() => {
+      if (gen !== loadGen) return;
+      // After all done, jump to absolute latest loaded frame
+      const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
+      if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
+    });
 
-    document.getElementById('liveTag').style.display = '';
     liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
   } catch(e) {
     if (gen !== loadGen) return;
