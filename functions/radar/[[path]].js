@@ -210,11 +210,11 @@ function parseLevel2(rawBuf, product = 'ref') {
       if (bbase + 4 > chunk.byteOffset + chunk.length) continue;
       const t0 = chunk[bbase], b1 = chunk[bbase+1], b2 = chunk[bbase+2], b3 = chunk[bbase+3];
 
-      // RAD block (type 'R' = 82, name 'R','A','D' = 82,65,68): contains Nyquist at offset 12
+      // RAD block (type 'R' = 82, name 'R','A','D' = 82,65,68): contains Nyquist at offset 16
       if (t0 === 82 && b1 === 82 && b2 === 65 && b3 === 68) {
-        if (bbase + 14 <= chunk.byteOffset + chunk.length) {
+        if (bbase + 18 <= chunk.byteOffset + chunk.length) {
           const rbdv = new DataView(chunk.buffer, bbase);
-          radNyquist = rbdv.getUint16(12, false) * 0.01; // 0.01 m/s units
+          radNyquist = rbdv.getInt16(16, false) * 0.01; // signed int16, 0.01 m/s units
         }
         continue;
       }
@@ -501,7 +501,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v5-${product}/${rest}`;
+      const cacheId = `v6-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
