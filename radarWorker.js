@@ -255,45 +255,46 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── AtticRadar VEL1 exact palette (NWS standard, m/s input) ──────────────
-// Derived from VEL1_colortable_preview gradient percentages → raw bytes → m/s
-const VEL_STOPS = [
-  {v:-64.0, c:[255,204,230]},
-  {v:-55.0, c:[252,  0,130]},
-  {v:-45.9, c:[109,  2,150]},
-  {v:-41.4, c:[ 22, 13,156]},
-  {v:-36.9, c:[ 30,111,188]},
-  {v:-32.4, c:[ 40,204,220]},
-  {v:-23.3, c:[181,237,239]},
-  {v:-18.8, c:[  2,241,  3]},
-  {v: -5.3, c:[  0,100,  0]},
-  {v: -0.8, c:[116,131,112]},
-  {v:  3.8, c:[109,  0,  0]},
-  {v: 17.3, c:[242,  0,  7]},
-  {v: 24.1, c:[255,149,207]},
-  {v: 26.4, c:[255,232,172]},
-  {v: 35.4, c:[253,149, 83]},
-  {v: 53.5, c:[110, 14,  9]},
-  {v: 62.5, c:[  0,  0,  0]},
+// ── AtticRadar exact velocity color table ────────────────────────────────
+// Source: SteepAtticStairs/AtticRadar colormaps.js — `velocity` variable (direct fetch 2026-03-16)
+// Units: KTS input converted to m/s (1 kt = 0.514444 m/s). Each range lerps cs→ce.
+const VEL_RANGES = [
+  [-72.022, -61.733, [255,204,230], [252,  0,130]],
+  [-61.733, -51.444, [109,  2,150], [110,  3,151]],
+  [-51.444, -46.300, [110,  3,151], [ 22, 13,156]],
+  [-46.300, -41.156, [ 24, 39,165], [ 30,111,188]],
+  [-41.156, -36.011, [ 30,111,188], [ 40,204,220]],
+  [-36.011, -25.722, [ 47,222,226], [181,237,239]],
+  [-25.722, -20.578, [181,237,239], [  2,241,  3]],
+  [-20.578,  -5.144, [  3,234,  2], [  0,100,  0]],
+  [ -5.144,   0.000, [ 78,121, 76], [116,131,112]],
+  [  0.000,   5.144, [137,117,122], [130, 51, 59]],
+  [  5.144,  20.578, [109,  0,  0], [242,  0,  7]],
+  [ 20.578,  28.294, [249, 51, 76], [255,149,207]],
+  [ 28.294,  30.867, [253,160,201], [255,232,172]],
+  [ 30.867,  41.156, [253,228,160], [253,149, 83]],
+  [ 41.156,  61.733, [254,142, 80], [110, 14,  9]],
+  [ 61.733,  72.022, [110, 14,  9], [110, 14,  9]],
 ];
 
 function velToRGBA(mps) {
-  if (mps <= VEL_STOPS[0].v) return [...VEL_STOPS[0].c];
-  const last = VEL_STOPS[VEL_STOPS.length-1];
-  if (mps >= last.v) return [...last.c];
-  for (let i = 0; i < VEL_STOPS.length - 1; i++) {
-    if (mps >= VEL_STOPS[i].v && mps < VEL_STOPS[i+1].v) {
-      const t = (mps - VEL_STOPS[i].v) / (VEL_STOPS[i+1].v - VEL_STOPS[i].v);
-      const c0 = VEL_STOPS[i].c, c1 = VEL_STOPS[i+1].c;
+  if (isNaN(mps) || mps === null) return null;
+  if (mps <= VEL_RANGES[0][0]) return [...VEL_RANGES[0][2], 255];
+  if (mps >= VEL_RANGES[VEL_RANGES.length-1][1]) return [0,0,0,255];
+  for (const [vs, ve, cs, ce] of VEL_RANGES) {
+    if (mps >= vs && mps < ve) {
+      const t = (mps - vs) / (ve - vs);
       return [
-        Math.round(c0[0] + t*(c1[0]-c0[0])),
-        Math.round(c0[1] + t*(c1[1]-c0[1])),
-        Math.round(c0[2] + t*(c1[2]-c0[2])),
+        Math.round(cs[0] + t*(ce[0]-cs[0])),
+        Math.round(cs[1] + t*(ce[1]-cs[1])),
+        Math.round(cs[2] + t*(ce[2]-cs[2])),
+        255
       ];
     }
   }
   return null;
 }
+
 
 // ── OpenSnow exact Correlation Coefficient palette ────────────────────────
 // Input: cc value 0.0–1.05
