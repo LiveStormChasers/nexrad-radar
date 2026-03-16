@@ -255,39 +255,41 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── AtticRadar VEL2 exact color table (Super-Res Base Velocity) ──────────
-// Source: SteepAtticStairs/AtticRadar colormaps.js VEL2 entry (direct fetch 2026-03-16)
-// Units: knots (±120 kt range), converted to m/s (1 kt = 0.514444 m/s)
-// Diverging blue→white→red palette, 13 stops
-const VEL2_STOPS = [
-  { v: -120 * 0.514444, c: [ 24,  28,  67] },
-  { v: -100 * 0.514444, c: [ 41,  56, 136] },
-  { v:  -80 * 0.514444, c: [ 12,  94, 190] },
-  { v:  -60 * 0.514444, c: [ 56, 136, 186] },
-  { v:  -40 * 0.514444, c: [117, 170, 190] },
-  { v:  -20 * 0.514444, c: [182, 201, 207] },
-  { v:    0            , c: [241, 236, 235] },
-  { v:   20 * 0.514444, c: [223, 187, 176] },
-  { v:   40 * 0.514444, c: [208, 139, 115] },
-  { v:   60 * 0.514444, c: [191,  87,  58] },
-  { v:   80 * 0.514444, c: [165,  33,  37] },
-  { v:  100 * 0.514444, c: [115,  14,  39] },
-  { v:  120 * 0.514444, c: [ 60,   9,  18] },
+// ── AtticRadar `velocity` color table (used for Super-Res Base Velocity) ──
+// Source: SteepAtticStairs/AtticRadar colormaps.js `velocity` variable
+// Units: KTS, converted to m/s (1 kt = 0.514444 m/s). Gradient between stops.
+// This is the green/purple palette AtticRadar shows on Super-Res Base Velocity.
+const KT = 0.514444;
+const VEL_RANGES = [
+  [-140*KT, -120*KT, [255,204,230], [252,  0,130]],
+  [-120*KT, -100*KT, [109,  2,150], [110,  3,151]],
+  [-100*KT,  -90*KT, [110,  3,151], [ 22, 13,156]],
+  [ -90*KT,  -80*KT, [ 24, 39,165], [ 30,111,188]],
+  [ -80*KT,  -70*KT, [ 30,111,188], [ 40,204,220]],
+  [ -70*KT,  -50*KT, [ 47,222,226], [181,237,239]],
+  [ -50*KT,  -40*KT, [181,237,239], [  2,241,  3]],
+  [ -40*KT,  -10*KT, [  3,234,  2], [  0,100,  0]],
+  [ -10*KT,    0    , [ 78,121, 76], [116,131,112]],
+  [   0    ,  10*KT, [137,117,122], [130, 51, 59]],
+  [  10*KT,   40*KT, [109,  0,  0], [242,  0,  7]],
+  [  40*KT,   55*KT, [249, 51, 76], [255,149,207]],
+  [  55*KT,   60*KT, [253,160,201], [255,232,172]],
+  [  60*KT,   80*KT, [253,228,160], [253,149, 83]],
+  [  80*KT,  120*KT, [254,142, 80], [110, 14,  9]],
+  [ 120*KT,  140*KT, [110, 14,  9], [110, 14,  9]],
 ];
 
 function velToRGBA(mps) {
   if (isNaN(mps) || mps === null) return null;
-  const first = VEL2_STOPS[0], last = VEL2_STOPS[VEL2_STOPS.length - 1];
-  if (mps <= first.v) return [...first.c, 255];
-  if (mps >= last.v)  return [...last.c,  255];
-  for (let i = 0; i < VEL2_STOPS.length - 1; i++) {
-    const a = VEL2_STOPS[i], b = VEL2_STOPS[i + 1];
-    if (mps >= a.v && mps < b.v) {
-      const t = (mps - a.v) / (b.v - a.v);
+  if (mps <= VEL_RANGES[0][0]) return [...VEL_RANGES[0][2], 255];
+  if (mps >= VEL_RANGES[VEL_RANGES.length-1][1]) return [0, 0, 0, 255];
+  for (const [vs, ve, cs, ce] of VEL_RANGES) {
+    if (mps >= vs && mps < ve) {
+      const t = (mps - vs) / (ve - vs);
       return [
-        Math.round(a.c[0] + t * (b.c[0] - a.c[0])),
-        Math.round(a.c[1] + t * (b.c[1] - a.c[1])),
-        Math.round(a.c[2] + t * (b.c[2] - a.c[2])),
+        Math.round(cs[0] + t*(ce[0]-cs[0])),
+        Math.round(cs[1] + t*(ce[1]-cs[1])),
+        Math.round(cs[2] + t*(ce[2]-cs[2])),
         255
       ];
     }
