@@ -377,7 +377,7 @@ function dealias_region(velocities, nyquist_vel) {
   function find_limits(nyq,sp,vd){
     const interval=(2*nyq)/sp;let as=0,ae=0;
     const all=vd.flat().filter(v=>v!==MASKED);
-    if(all.length){const mx=Math.max(...all),mn=Math.min(...all);
+    if(all.length){let mx=-Infinity,mn=Infinity;for(const v of all){if(v>mx)mx=v;if(v<mn)mn=v;}
       if(mx>nyq||mn<-nyq){as=Math.ceil((mx-nyq)/interval)|0;ae=Math.ceil(-(mn+nyq)/interval)|0;}}
     return ls(-nyq-as*interval,nyq+ae*interval,sp+1+as+ae);
   }
