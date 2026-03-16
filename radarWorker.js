@@ -399,11 +399,11 @@ function renderLevel2VelFlat(buf) {
       const bbase = chunk.byteOffset + base + ptr;
       if (bbase + 4 > chunk.byteOffset + chunk.length) continue;
       const t0=chunk[bbase],b1=chunk[bbase+1],b2=chunk[bbase+2],b3=chunk[bbase+3];
-      // RAD block: type 'R'=82, name 'R','A','D'
+      // RAD block: type 'R'=82, name 'R','A','D', Nyquist at offset 16 (signed int16, 0.01 m/s)
       if (t0===82&&b1===82&&b2===65&&b3===68) {
-        if (bbase+14<=chunk.byteOffset+chunk.length) {
+        if (bbase+18<=chunk.byteOffset+chunk.length) {
           const rbdv=new DataView(chunk.buffer,bbase);
-          radNyquist=rbdv.getUint16(12,false)*0.01;
+          radNyquist=rbdv.getInt16(16,false)*0.01;
         }
         continue;
       }
@@ -418,7 +418,6 @@ function renderLevel2VelFlat(buf) {
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
       for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
-      const nyquist = dv2.getUint16(24, false) * 0.01;
       elevData[elevIdx] = {
         numGates:velNG, firstGateM:velFG, gateSizeM:velGS,
         radialData: new Float32Array(NUM_AZ*velNG).fill(-999),
