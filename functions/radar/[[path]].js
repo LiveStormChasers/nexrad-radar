@@ -348,26 +348,82 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  // Velocity: remove range-folded / aliased gates using spatial continuity check.
-  // NEXRAD Nyquist velocities are typically 8–33 m/s depending on VCP/PRF.
-  // Low-PRF VCPs (e.g. VCP 31) have Nyquist ~10 m/s — aliased gates jump by
-  // 2×Nyquist ≈ 20 m/s from their neighbors. We use 15 m/s threshold to catch these
-  // while preserving real gradients (even strong mesocyclones rarely exceed 10 m/s
-  // per 0.5° azimuth step at adjacent rays).
+  // Velocity dealiasing: correct range-folded gates rather than masking them.
+  // OpenSnow does this server-side. We do it here.
+  //
+  // Algorithm:
+  //  1. Estimate Nyquist from the data: find the fold interval by looking for
+  //     the symmetric "hole" in the velocity histogram around 0.
+  //     Nyquist ≈ value where cumulative gate count transitions from dense to sparse.
+  //  2. For each gate, compare to the mean of its 4 azimuthal neighbors.
+  //     If it differs by more than Nyquist, add or subtract 2*Nyquist to correct.
+  //  3. Repeat twice to handle double-folds.
   if (product === 'vel') {
-    const NYQUIST_THRESH = 15.0; // m/s
-    for (let r = 0; r < NUM_AZ; r++) {
-      const rPrev = (r + NUM_AZ - 1) % NUM_AZ;
-      const rNext = (r + 1) % NUM_AZ;
-      for (let g = 0; g < numGates; g++) {
-        const v  = radialData[r     * numGates + g];
-        if (v <= -900) continue;
-        const vp = radialData[rPrev * numGates + g];
-        const vn = radialData[rNext * numGates + g];
-        if (vp > -900 && vn > -900 &&
-            Math.abs(v - vp) > NYQUIST_THRESH &&
-            Math.abs(v - vn) > NYQUIST_THRESH) {
-          radialData[r * numGates + g] = -999;
+    // Step 1: estimate Nyquist from histogram
+    // Build histogram in 0.5 m/s bins from -70 to +70 m/s
+    const BINS = 280, BIN_MIN = -70, BIN_SIZE = 0.5;
+    const hist = new Int32Array(BINS);
+    let validCount = 0;
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const v = radialData[i];
+      if (v <= -900) continue;
+      validCount++;
+      const b = Math.floor((v - BIN_MIN) / BIN_SIZE);
+      if (b >= 0 && b < BINS) hist[b]++;
+    }
+
+    // Find Nyquist: the largest velocity magnitude where the histogram
+    // drops to near-zero before rising again (the fold boundary).
+    // Simple heuristic: scan outward from 0; Nyquist is where we see
+    // a deep valley (< 1% of peak density) followed by a secondary peak.
+    let nyquist = 30.0; // default safe value (m/s)
+    if (validCount > 500) {
+      const peakCount = Math.max(...hist);
+      const threshold = peakCount * 0.01;
+      // Find first valley scanning outward from center (bin 140 = 0 m/s)
+      const center = Math.floor((0 - BIN_MIN) / BIN_SIZE);
+      for (let d = 5; d < 80; d++) { // 5*0.5=2.5 m/s to 40 m/s
+        const bLo = center - d, bHi = center + d;
+        if (bLo >= 0 && bHi < BINS &&
+            hist[bLo] < threshold && hist[bHi] < threshold) {
+          // Valley found — check that there's data beyond it
+          let hasDataBeyond = false;
+          for (let b2 = 0; b2 < bLo; b2++) if (hist[b2] > threshold) { hasDataBeyond = true; break; }
+          if (!hasDataBeyond) for (let b2 = bHi+1; b2 < BINS; b2++) if (hist[b2] > threshold) { hasDataBeyond = true; break; }
+          if (hasDataBeyond) { nyquist = d * BIN_SIZE; break; }
+        }
+      }
+    }
+
+    // Step 2: apply fold correction using azimuthal neighbor reference
+    // Run 2 passes to handle double-folds
+    for (let pass = 0; pass < 2; pass++) {
+      for (let r = 0; r < NUM_AZ; r++) {
+        const rPrev = (r + NUM_AZ - 1) % NUM_AZ;
+        const rNext = (r + 1) % NUM_AZ;
+        for (let g = 0; g < numGates; g++) {
+          const v = radialData[r * numGates + g];
+          if (v <= -900) continue;
+          // Build reference from valid neighbors
+          let refSum = 0, refCount = 0;
+          const vp = radialData[rPrev * numGates + g];
+          const vn = radialData[rNext * numGates + g];
+          if (vp > -900) { refSum += vp; refCount++; }
+          if (vn > -900) { refSum += vn; refCount++; }
+          // Also use range neighbors for better reference
+          if (g > 0) {
+            const vg = radialData[r * numGates + g - 1];
+            if (vg > -900) { refSum += vg; refCount++; }
+          }
+          if (g < numGates - 1) {
+            const vg = radialData[r * numGates + g + 1];
+            if (vg > -900) { refSum += vg; refCount++; }
+          }
+          if (refCount < 2) continue;
+          const ref = refSum / refCount;
+          const diff = v - ref;
+          if (diff > nyquist)       radialData[r * numGates + g] -= 2 * nyquist;
+          else if (diff < -nyquist) radialData[r * numGates + g] += 2 * nyquist;
         }
       }
     }
