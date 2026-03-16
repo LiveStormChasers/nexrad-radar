@@ -455,23 +455,20 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates, nyquist } = best;
 
-  // Radial phase-unwrap dealiasing using Nyquist read from file header
+  // Velocity dealiasing: per-radial median shift
   if (nyquist > 0) {
     const twoNyq = 2 * nyquist;
     for (let r = 0; r < NUM_AZ; r++) {
       const row = r * numGates;
-      let prev = -999;
-      for (let g = 0; g < numGates; g++) {
-        let v = radialData[row + g];
-        if (v <= -900) { prev = -999; continue; }
-        if (prev > -900) {
-          const diff = v - prev;
-          if      (diff >  nyquist) v -= twoNyq;
-          else if (diff < -nyquist) v += twoNyq;
-          radialData[row + g] = v;
-        }
-        prev = v;
-      }
+      const vals = [];
+      for (let g = 0; g < numGates; g++) { const v=radialData[row+g]; if(v>-900)vals.push(v); }
+      if (vals.length < 5) continue;
+      vals.sort((a,b)=>a-b);
+      const med = vals[Math.floor(vals.length/2)];
+      const n = Math.round(-med / twoNyq);
+      if (n === 0) continue;
+      const shift = n * twoNyq;
+      for (let g = 0; g < numGates; g++) { if(radialData[row+g]>-900) radialData[row+g]+=shift; }
     }
   }
 
