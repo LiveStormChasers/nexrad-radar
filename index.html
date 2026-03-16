@@ -90,6 +90,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 .seg.seg-past{background:#4a5560}
 .seg.seg-active{background:var(--brand);min-width:10px}
 .seg.seg-future{background:var(--gray4)}
+.seg.seg-empty{background:#222;opacity:0.35;cursor:default;pointer-events:none}
 
 /* ── Controls row ── */
 #controlRow{
@@ -742,35 +743,45 @@ async function loadStation() {
     if (gen !== loadGen) return;
     if (!lst.length) { setStatus('No data'); return; }
 
-    frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' }));
+    frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact', failed: false }));
     buildTicks(frames.length);
     setStatus('');
 
-    // Fire ALL frames simultaneously.
-    // As each one completes, if it's the most recent with real data, display it immediately.
-    // This means the user sees radar within ~1s instead of waiting for a serial walk-backward.
+    // Fire ALL frames in parallel. Show the latest complete frame as soon as it arrives.
     let displayedIdx = -1;
 
     await Promise.all(
       frames.map(async (f, i) => {
         if (gen !== loadGen) return;
-        await fetchAndProcess(i);
+        try {
+          await fetchAndProcess(i);
+        } catch(e) {
+          f.failed = true;
+          updateTickEmpty(i);
+          return;
+        }
         if (gen !== loadGen) return;
 
         if (f.compactBuf) {
           updateTickLoaded(i);
-          // Show this frame if it's the latest complete one so far
           if (i > displayedIdx) {
             displayedIdx = i;
             frameIdx = i;
             setFrame(i, true);
           }
+        } else {
+          f.failed = true;
+          updateTickEmpty(i);
         }
       })
     );
 
     if (gen !== loadGen) return;
-    if (displayedIdx < 0) { setStatus('No data'); return; }
+
+    // After all done, jump to the latest frame that actually has data
+    const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
+    if (latestLoaded < 0) { setStatus('No data'); return; }
+    if (latestLoaded !== frameIdx) setFrame(latestLoaded, true);
 
     document.getElementById('liveTag').style.display = '';
     liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
@@ -825,8 +836,10 @@ async function fetchAndProcess(fi) {
   const f = frames[fi];
   const pParam = curProduct === 'VEL' ? '?p=vel' : curProduct === 'CC' ? '?p=cc' : '';
   const velType = curProduct === 'VEL' ? 'vel' : curProduct === 'CC' ? 'cc' : null;
+  // Extract station from file key (e.g. "KLVX_20260316_031856.bz2" → "KLVX")
+  const fileSite = f.key.match(/^([A-Z]{4})_/)?.[1] || curSite;
   try {
-    const r = await fetch(`/radar/process/${curSite}/${f.key}${pParam}`);
+    const r = await fetch(`/radar/process/${fileSite}/${f.key}${pParam}`);
     if (r.status === 204) return; // no data for this product in this file (mid-scan)
     if (!r.ok) throw new Error(r.status);
     let buf = await r.arrayBuffer();
@@ -836,7 +849,7 @@ async function fetchAndProcess(fi) {
     f.msgType    = velType ? `compact_${velType}` : 'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
   } catch(e) {
-    const r2 = await fetch(`/radar/file/${curSite}/${f.key}`);
+    const r2 = await fetch(`/radar/file/${fileSite}/${f.key}`);
     if (!r2.ok) throw new Error(r2.status);
     f.compactBuf = await r2.arrayBuffer();
     f.msgType    = velType ? `level2_${velType}` : 'level2';
@@ -953,6 +966,14 @@ function buildTicks(n) {
   }
 }
 
+function updateTickEmpty(i) {
+  const seg = document.getElementById('seg-' + i);
+  if (seg) {
+    seg.classList.remove('seg-future', 'seg-past', 'seg-active');
+    seg.classList.add('seg-empty');
+  }
+}
+
 function updateTickLoaded(i) {
   const seg = document.getElementById('seg-' + i);
   if (seg && !seg.classList.contains('seg-active')) {
@@ -964,14 +985,23 @@ function updateTickLoaded(i) {
 function setFrame(idx, force) {
   if (!frames.length) return;
   idx = Math.max(0, Math.min(frames.length - 1, idx));
+  // Skip empty/failed frames when navigating
+  if (!force && frames[idx]?.failed) {
+    // find nearest non-failed frame
+    for (let d = 1; d < frames.length; d++) {
+      if (idx + d < frames.length && !frames[idx + d]?.failed) { idx = idx + d; break; }
+      if (idx - d >= 0           && !frames[idx - d]?.failed) { idx = idx - d; break; }
+    }
+  }
   if (idx === frameIdx && !force) return;
   frameIdx = idx;
 
   document.querySelectorAll('.seg').forEach((seg, i) => {
     seg.classList.remove('seg-active', 'seg-past', 'seg-future');
-    if (i === idx)              seg.classList.add('seg-active');
-    else if (frames[i]?.compactBuf) seg.classList.add('seg-past');
-    else                        seg.classList.add('seg-future');
+    if (i === idx)                    seg.classList.add('seg-active');
+    else if (frames[i]?.failed)       seg.classList.add('seg-empty');
+    else if (frames[i]?.compactBuf)   seg.classList.add('seg-past');
+    else                              seg.classList.add('seg-future');
   });
 
   const prod = curProduct === 'VEL' ? 'Velocity' : curProduct === 'CC' ? 'Corr. Coeff.' : 'Reflectivity';
