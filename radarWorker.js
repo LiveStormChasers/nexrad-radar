@@ -361,9 +361,9 @@ function renderLevel2VelFlat(buf) {
   let pos = 24;
   const NUM_AZ = 720;
   const REF_MASK_DBZ = 5.0;
-  let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
-  let refData    = null, refNumGates = 0;
-  let foundElevIdx = null;
+
+  // Collect ALL elevation cuts, then pick fewest gates (= highest Nyquist = least folding)
+  const elevData = {};
 
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
@@ -389,7 +389,6 @@ function renderLevel2VelFlat(buf) {
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
-    if (foundElevIdx !== null && elevIdx !== foundElevIdx) return;
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
@@ -412,32 +411,61 @@ function renderLevel2VelFlat(buf) {
     }
 
     if (velPtr < 0) return;
-    if (!radialData) {
-      numGates=velNG; firstGateM=velFG; gateSizeM=velGS;
-      radialData=new Float32Array(NUM_AZ*velNG).fill(-999);
-      refNumGates=refNG>0?refNG:velNG;
-      refData=new Float32Array(NUM_AZ*refNumGates).fill(-999);
-      foundElevIdx=elevIdx;
+
+    if (!elevData[elevIdx]) {
+      const az0 = new Float32Array(NUM_AZ);
+      for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
+      elevData[elevIdx] = {
+        numGates:velNG, firstGateM:velFG, gateSizeM:velGS,
+        radialData: new Float32Array(NUM_AZ*velNG).fill(-999),
+        azAngles: az0,
+        refNumGates: refNG>0?refNG:0,
+        refData: refNG>0 ? new Float32Array(NUM_AZ*refNG).fill(-999) : null,
+        populated: 0
+      };
     }
+    const ed = elevData[elevIdx];
+    if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
+    ed.azAngles[azBin] = az;
+
     const velOff=base+velPtr+28;
-    for(let g=0;g<velNG&&g<numGates;g++){
+    for(let g=0;g<velNG&&g<ed.numGates;g++){
       if(velOff+g>=chunk.length)break;
       const rv=chunk[chunk.byteOffset+velOff+g];
-      radialData[azBin*numGates+g]=rv<=1?-999:(rv-velOfs)/velScl;
+      ed.radialData[azBin*ed.numGates+g]=rv<=1?-999:(rv-velOfs)/velScl;
     }
-    if(refPtr>=0&&refData){
+    if(refPtr>=0&&ed.refData){
       const refOff=base+refPtr+28;
-      for(let g=0;g<refNG&&g<refNumGates;g++){
+      for(let g=0;g<refNG&&g<ed.refNumGates;g++){
         if(refOff+g>=chunk.length)break;
         const rv=chunk[chunk.byteOffset+refOff+g];
-        refData[azBin*refNumGates+g]=rv<=1?-999:(rv-refOfs)/refScl;
+        ed.refData[azBin*ed.refNumGates+g]=rv<=1?-999:(rv-refOfs)/refScl;
       }
     }
   }
 
-  if (!radialData) throw new Error('No VEL data found in any elevation');
+  // Pick fewest-gates elevation with ≥360 populated azimuths (highest Nyquist)
+  const keys = Object.keys(elevData);
+  if (!keys.length) throw new Error('No VEL data found in any elevation');
+  let best = null;
+  for (const k of keys) {
+    const ed = elevData[k];
+    if (ed.populated < 360) continue;
+    if (!best || ed.numGates < best.numGates ||
+        (ed.numGates === best.numGates && ed.populated > best.populated)) best = ed;
+  }
+  if (!best) {
+    // fallback: most populated
+    for (const k of keys) {
+      const ed = elevData[k];
+      if (!best || ed.populated > best.populated) best = ed;
+    }
+  }
+  if (!best) throw new Error('No VEL data found in any elevation');
 
-  // Apply REF quality mask
+  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
+
+  // REF quality mask
   if (refData) {
     const ratio = refNumGates / numGates;
     for(let r=0;r<NUM_AZ;r++) for(let g=0;g<numGates;g++){
