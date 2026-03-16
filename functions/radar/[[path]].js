@@ -289,7 +289,11 @@ function parseLevel2(rawBuf, product = 'ref') {
   //   • Short-range (SR): fewer gates (1192), high Nyquist (~29.3 m/s, clean) → velocity reference
   // Strategy: use LR for coverage, use SR to unfold it gate-by-gate.
   if (product !== 'ref') {
-    const candidates = Object.values(elevData).filter(ed => ed.populated >= 360);
+    const allCuts = Object.values(elevData);
+    // Build debug string of all elevation cuts found
+    const debugCuts = allCuts.map(ed => `ng=${ed.numGates},pop=${ed.populated}`).join('|');
+    
+    const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (candidates.length === 0) {
       // fallback: most populated regardless
       const all = Object.values(elevData);
@@ -381,7 +385,7 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete };
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -540,6 +544,7 @@ export async function onRequest(context) {
         'X-Cache':          'MISS',
         'X-Product':        product,
         'X-Complete':       String(parsed.isComplete),
+      'X-Debug-Cuts':     parsed.debugCuts || '',
         'X-Compact-Bytes':  String(compact.byteLength),
         'X-Gzip-Bytes':     String(gzipped.byteLength),
       };
