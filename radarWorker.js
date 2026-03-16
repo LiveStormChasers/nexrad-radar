@@ -419,7 +419,7 @@ function dealias_region(velocities, nyquist_vel) {
   const unwrap=new Int32Array(nf+1);
   const par=Array.from({length:nf+1},(_,i)=>i);
   const sz=rsizes.slice();
-  function find(x){while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;}
+  function find(x){while(par[x]!==x){const p=par[x];par[x]=par[p];x=p;}return x;}
 
   edges.sort((a,b)=>b.cnt-a.cnt);
   for(const{a,b,sv,nv,cnt} of edges){
