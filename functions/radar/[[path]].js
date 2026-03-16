@@ -303,6 +303,7 @@ function parseLevel2(rawBuf, product = 'ref') {
     debugCuts = allCuts.map(ed => `ng=${ed.numGates},nyq=${ed.nyquist?.toFixed(1)},pop=${ed.populated}`).join('|');
 
     const candidates = allCuts.filter(ed => ed.populated >= 360);
+    if (!allCuts.length) return null;
     const best = candidates.length
       ? candidates.reduce((b, e) => e.populated > b.populated ? e : b)
       : allCuts.reduce((b, e) => e.populated > b.populated ? e : b);
@@ -494,7 +495,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v8-${product}/${rest}`;
+      const cacheId = `v9-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
