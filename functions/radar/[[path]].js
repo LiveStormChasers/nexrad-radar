@@ -283,40 +283,73 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  // VEL/CC: pick the elevation with the FEWEST gates that is well-populated.
-  // Fewer gates = shorter range = higher PRF = higher Nyquist = less range folding.
-  // This matches the Doppler cut in split-cut VCPs (e.g. VCP 215 elev-2: 1192 gates,
-  // Nyquist 29.3 m/s) rather than the long-range surveillance cut (1832 gates, Nyquist 7.97 m/s).
+  // VEL/CC: pick the best elevation cuts.
+  // Split-cut VCPs produce TWO 0.5° scans:
+  //   • Long-range (LR): most gates (1832), low Nyquist (~7.97 m/s, aliased)  → full coverage
+  //   • Short-range (SR): fewer gates (1192), high Nyquist (~29.3 m/s, clean) → velocity reference
+  // Strategy: use LR for coverage, use SR to unfold it gate-by-gate.
   if (product !== 'ref') {
-    const keys = Object.keys(elevData);
-    if (keys.length === 0) return null;
-    let best = null;
-    for (const k of keys) {
-      const ed = elevData[k];
-      // Must have at least 360 populated azimuths to be usable
-      if (ed.populated < 360) continue;
-      if (!best ||
-          ed.numGates < best.numGates ||
-          (ed.numGates === best.numGates && ed.populated > best.populated)) {
-        best = ed;
-        foundElevIdx = +k;
+    const candidates = Object.values(elevData).filter(ed => ed.populated >= 360);
+    if (candidates.length === 0) {
+      // fallback: most populated regardless
+      const all = Object.values(elevData);
+      if (!all.length) return null;
+      const best = all.reduce((b, e) => e.populated > b.populated ? e : b);
+      numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
+      radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
+      for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
+    } else {
+      candidates.sort((a, b) => a.numGates - b.numGates);
+      const srCut = candidates[0];                          // fewest gates = high Nyquist
+      const lrCut = candidates[candidates.length - 1];     // most gates   = low Nyquist
+
+      numGates = lrCut.numGates; firstGateM = lrCut.firstGateM; gateSizeM = lrCut.gateSizeM;
+      radialData = lrCut.radialData; refData = lrCut.refData; refNumGates = lrCut.refNumGates;
+      for (let i = 0; i < NUM_AZ; i++) azAngles[i] = lrCut.azAngles[i];
+
+      // Velocity dealiasing using SR as reference
+      if (product === 'vel' && srCut !== lrCut && srCut.numGates < lrCut.numGates * 0.9) {
+        // Derive Nyquist of the LR cut from its max decoded value
+        let nyquistLR = 0;
+        for (let i = 0; i < NUM_AZ * lrCut.numGates; i++) {
+          const v = lrCut.radialData[i];
+          if (v > -900 && Math.abs(v) > nyquistLR) nyquistLR = Math.abs(v);
+        }
+        nyquistLR = Math.max(nyquistLR, 1.0); // safety floor
+        const twoNyq = 2 * nyquistLR;
+
+        const srNG = srCut.numGates;
+        for (let r = 0; r < NUM_AZ; r++) {
+          const lrRow = r * lrCut.numGates;
+          const srRow = r * srNG;
+
+          // Phase 1: unfold inner gates using SR as reference
+          for (let g = 0; g < srNG && g < lrCut.numGates; g++) {
+            const lrV = lrCut.radialData[lrRow + g];
+            if (lrV <= -900) continue;
+            const srV = srCut.radialData[srRow + g];
+            if (srV <= -900) continue;
+            const n = Math.round((srV - lrV) / twoNyq);
+            if (n !== 0) lrCut.radialData[lrRow + g] = lrV + n * twoNyq;
+          }
+
+          // Phase 2: extend beyond SR range using radial phase unwrap
+          for (let g = srNG; g < lrCut.numGates; g++) {
+            const lrV = lrCut.radialData[lrRow + g];
+            if (lrV <= -900) continue;
+            // find closest valid inner gate as anchor
+            let prevV = -999;
+            for (let pg = g - 1; pg >= 0 && prevV <= -900; pg--) {
+              prevV = lrCut.radialData[lrRow + pg];
+            }
+            if (prevV <= -900) continue;
+            const diff = lrV - prevV;
+            if (diff > nyquistLR)        lrCut.radialData[lrRow + g] = lrV - twoNyq;
+            else if (diff < -nyquistLR)  lrCut.radialData[lrRow + g] = lrV + twoNyq;
+          }
+        }
       }
     }
-    // Fallback: if nothing had 360+ azimuths, take most populated regardless of gates
-    if (!best) {
-      for (const k of keys) {
-        const ed = elevData[k];
-        if (!best || ed.populated > best.populated) { best = ed; foundElevIdx = +k; }
-      }
-    }
-    if (!best) return null;
-    numGates    = best.numGates;
-    firstGateM  = best.firstGateM;
-    gateSizeM   = best.gateSizeM;
-    radialData  = best.radialData;
-    refData     = best.refData;
-    refNumGates = best.refNumGates;
-    for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
   }
 
   if (!radialData) {
@@ -343,87 +376,6 @@ function parseLevel2(rawBuf, product = 'ref') {
         const ref  = refData[r * refNumGates + refG];
         if (ref < REF_MASK_THRESHOLD) {
           radialData[r * numGates + g] = -999;
-        }
-      }
-    }
-  }
-
-  // Velocity dealiasing: correct range-folded gates rather than masking them.
-  // OpenSnow does this server-side. We do it here.
-  //
-  // Algorithm:
-  //  1. Estimate Nyquist from the data: find the fold interval by looking for
-  //     the symmetric "hole" in the velocity histogram around 0.
-  //     Nyquist ≈ value where cumulative gate count transitions from dense to sparse.
-  //  2. For each gate, compare to the mean of its 4 azimuthal neighbors.
-  //     If it differs by more than Nyquist, add or subtract 2*Nyquist to correct.
-  //  3. Repeat twice to handle double-folds.
-  if (product === 'vel') {
-    // Step 1: estimate Nyquist from histogram
-    // Build histogram in 0.5 m/s bins from -70 to +70 m/s
-    const BINS = 280, BIN_MIN = -70, BIN_SIZE = 0.5;
-    const hist = new Int32Array(BINS);
-    let validCount = 0;
-    for (let i = 0; i < NUM_AZ * numGates; i++) {
-      const v = radialData[i];
-      if (v <= -900) continue;
-      validCount++;
-      const b = Math.floor((v - BIN_MIN) / BIN_SIZE);
-      if (b >= 0 && b < BINS) hist[b]++;
-    }
-
-    // Find Nyquist: the largest velocity magnitude where the histogram
-    // drops to near-zero before rising again (the fold boundary).
-    // Simple heuristic: scan outward from 0; Nyquist is where we see
-    // a deep valley (< 1% of peak density) followed by a secondary peak.
-    let nyquist = 30.0; // default safe value (m/s)
-    if (validCount > 500) {
-      const peakCount = Math.max(...hist);
-      const threshold = peakCount * 0.01;
-      // Find first valley scanning outward from center (bin 140 = 0 m/s)
-      const center = Math.floor((0 - BIN_MIN) / BIN_SIZE);
-      for (let d = 5; d < 80; d++) { // 5*0.5=2.5 m/s to 40 m/s
-        const bLo = center - d, bHi = center + d;
-        if (bLo >= 0 && bHi < BINS &&
-            hist[bLo] < threshold && hist[bHi] < threshold) {
-          // Valley found — check that there's data beyond it
-          let hasDataBeyond = false;
-          for (let b2 = 0; b2 < bLo; b2++) if (hist[b2] > threshold) { hasDataBeyond = true; break; }
-          if (!hasDataBeyond) for (let b2 = bHi+1; b2 < BINS; b2++) if (hist[b2] > threshold) { hasDataBeyond = true; break; }
-          if (hasDataBeyond) { nyquist = d * BIN_SIZE; break; }
-        }
-      }
-    }
-
-    // Step 2: apply fold correction using azimuthal neighbor reference
-    // Run 2 passes to handle double-folds
-    for (let pass = 0; pass < 2; pass++) {
-      for (let r = 0; r < NUM_AZ; r++) {
-        const rPrev = (r + NUM_AZ - 1) % NUM_AZ;
-        const rNext = (r + 1) % NUM_AZ;
-        for (let g = 0; g < numGates; g++) {
-          const v = radialData[r * numGates + g];
-          if (v <= -900) continue;
-          // Build reference from valid neighbors
-          let refSum = 0, refCount = 0;
-          const vp = radialData[rPrev * numGates + g];
-          const vn = radialData[rNext * numGates + g];
-          if (vp > -900) { refSum += vp; refCount++; }
-          if (vn > -900) { refSum += vn; refCount++; }
-          // Also use range neighbors for better reference
-          if (g > 0) {
-            const vg = radialData[r * numGates + g - 1];
-            if (vg > -900) { refSum += vg; refCount++; }
-          }
-          if (g < numGates - 1) {
-            const vg = radialData[r * numGates + g + 1];
-            if (vg > -900) { refSum += vg; refCount++; }
-          }
-          if (refCount < 2) continue;
-          const ref = refSum / refCount;
-          const diff = v - ref;
-          if (diff > nyquist)       radialData[r * numGates + g] -= 2 * nyquist;
-          else if (diff < -nyquist) radialData[r * numGates + g] += 2 * nyquist;
         }
       }
     }
