@@ -322,16 +322,6 @@ function parseLevel2(rawBuf, product = 'ref') {
     return null;
   }
 
-  // Count how many azimuths actually have data (to detect mid-scan files)
-  let populatedAz = 0;
-  for (let r = 0; r < NUM_AZ; r++) {
-    for (let g = 0; g < Math.min(numGates, 10); g++) {
-      if (radialData[r * numGates + g] > -900) { populatedAz++; break; }
-    }
-  }
-  const isComplete = populatedAz >= 700; // full 720-ray sweep ≈ complete
-  // Don't serve partial velocity scans — they show as ugly wedges
-  if (!isComplete && product === 'vel') return null;
 
   // Apply REF quality mask to VEL/CC: zero out gates without a real echo
   if (product === 'cc' && refData) {
@@ -472,7 +462,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v12-${product}/${rest}`;
+      const cacheId = `v13-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
