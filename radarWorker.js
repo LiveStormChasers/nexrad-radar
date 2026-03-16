@@ -255,40 +255,71 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── OpenSnow exact velocity palette ──────────────────────────────────────
-// Negative = toward radar, Positive = away from radar
-// Source: reverse-engineered from opensnow.com/stormnet radarWorker
-const VEL_NEG = [ // toward (negative m/s)
-  { v: -60, c: [255,182,193] },
-  { v: -50, c: [139,  0,139] },
-  { v: -40, c: [  0,  0,139] },
-  { v: -30, c: [173,216,230] },
-  { v: -20, c: [144,238,144] },
-  { v: -10, c: [  0,100,  0] },
-  { v:   0, c: [128,128,128] },
-];
-const VEL_POS = [ // away (positive m/s)
-  { v:  0, c: [128,128,128] },
-  { v: 20, c: [139,  0,  0] },
-  { v: 40, c: [255,192,203] },
-  { v: 50, c: [244,164, 96] },
-  { v: 60, c: [101, 67, 33] },
+// ── AtticRadar exact velocity palette (BV colortable, m/s input) ──────────
+const VEL_STOPS = [
+  { v:-63.5, c:[26,31,73] },
+  { v:-61.0, c:[31,38,88] },
+  { v:-58.5, c:[35,45,105] },
+  { v:-56.0, c:[39,51,122] },
+  { v:-53.5, c:[41,58,140] },
+  { v:-51.0, c:[41,64,158] },
+  { v:-48.5, c:[37,72,176] },
+  { v:-46.0, c:[25,82,188] },
+  { v:-43.5, c:[12,94,190] },
+  { v:-41.0, c:[13,104,189] },
+  { v:-38.5, c:[25,114,187] },
+  { v:-36.0, c:[38,123,186] },
+  { v:-33.5, c:[51,132,186] },
+  { v:-31.0, c:[64,141,186] },
+  { v:-28.5, c:[78,149,186] },
+  { v:-26.0, c:[92,157,187] },
+  { v:-23.5, c:[107,165,188] },
+  { v:-21.0, c:[123,172,191] },
+  { v:-18.5, c:[139,180,194] },
+  { v:-16.0, c:[155,187,198] },
+  { v:-13.5, c:[170,194,203] },
+  { v:-11.0, c:[185,202,208] },
+  { v: -8.5, c:[199,210,215] },
+  { v: -6.0, c:[213,218,221] },
+  { v: -3.5, c:[227,227,228] },
+  { v: -1.0, c:[241,236,236] },
+  { v:  1.5, c:[237,227,224] },
+  { v:  4.0, c:[232,215,210] },
+  { v:  6.5, c:[228,203,196] },
+  { v:  9.0, c:[224,192,181] },
+  { v: 11.5, c:[220,180,167] },
+  { v: 14.0, c:[217,169,152] },
+  { v: 16.5, c:[214,157,138] },
+  { v: 19.0, c:[210,146,124] },
+  { v: 21.5, c:[207,134,110] },
+  { v: 24.0, c:[203,123,96] },
+  { v: 26.5, c:[199,111,83] },
+  { v: 29.0, c:[195,99,70] },
+  { v: 31.5, c:[191,87,58] },
+  { v: 34.0, c:[187,75,48] },
+  { v: 36.5, c:[182,61,40] },
+  { v: 39.0, c:[175,48,36] },
+  { v: 41.5, c:[167,36,36] },
+  { v: 44.0, c:[157,25,38] },
+  { v: 46.5, c:[146,18,40] },
+  { v: 49.0, c:[134,14,41] },
+  { v: 51.5, c:[120,14,40] },
+  { v: 54.0, c:[107,15,37] },
+  { v: 56.5, c:[94,14,33] },
+  { v: 59.0, c:[81,13,28] },
+  { v: 61.5, c:[68,11,22] },
 ];
 
 function velToRGBA(mps) {
-  const mph = mps * 2.23694;
-  const s   = Math.max(-60, Math.min(60, mph));
-  const table = s >= 0 ? VEL_POS : VEL_NEG;
-  // Below first stop → transparent (matches OpenSnow: s<=o[0].vel → [0,0,0,0])
-  if (s <= table[0].v) return null;
-  // Above last stop → clamp to last color
-  if (s >= table[table.length-1].v) {
-    const c = table[table.length-1].c; return [c[0],c[1],c[2]];
+  if (mps <= VEL_STOPS[0].v) return [VEL_STOPS[0].c[0], VEL_STOPS[0].c[1], VEL_STOPS[0].c[2]];
+  if (mps >= VEL_STOPS[VEL_STOPS.length-1].v) {
+    const c = VEL_STOPS[VEL_STOPS.length-1].c;
+    return [c[0], c[1], c[2]];
   }
-  for (let i = 0; i < table.length - 1; i++) {
-    if (s >= table[i].v && s < table[i+1].v) {
-      const t  = (s - table[i].v) / (table[i+1].v - table[i].v);
-      const c0 = table[i].c, c1 = table[i+1].c;
+  for (let i = 0; i < VEL_STOPS.length - 1; i++) {
+    if (mps >= VEL_STOPS[i].v && mps < VEL_STOPS[i+1].v) {
+      const t = (mps - VEL_STOPS[i].v) / (VEL_STOPS[i+1].v - VEL_STOPS[i].v);
+      const c0 = VEL_STOPS[i].c, c1 = VEL_STOPS[i+1].c;
       return [
         Math.round(c0[0] + t*(c1[0]-c0[0])),
         Math.round(c0[1] + t*(c1[1]-c0[1])),
@@ -348,6 +379,99 @@ function renderCompactVelFlat(buf) {
     }
   }
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
+}
+
+// ── Pyart region-based dealiasing (ported from AtticRadar/dealias.js) ────────
+function dealias_region(velocities, nyquist_vel) {
+  const MASKED=-64.5,splits=3,gapX=99,gapY=100,wrap=true;
+  function c2(a){return a.map(r=>r.slice());}
+  function ls(s,e,n){const a=[],st=(e-s)/(n-1);for(let i=0;i<n;i++)a.push(s+st*i);return a;}
+  function find_limits(nyq,sp,vd){
+    const interval=(2*nyq)/sp;let as=0,ae=0;
+    const all=vd.flat().filter(v=>v!==MASKED);
+    if(all.length){const mx=Math.max(...all),mn=Math.min(...all);
+      if(mx>nyq||mn<-nyq){as=Math.ceil((mx-nyq)/interval)|0;ae=Math.ceil(-(mn+nyq)/interval)|0;}}
+    return ls(-nyq-as*interval,nyq+ae*interval,sp+1+as+ae);
+  }
+  function label_img(arr){
+    const nR=arr.length,nG=arr[0].length,lbl=Array.from({length:nR},()=>new Int32Array(nG));
+    let cnt=1;
+    for(let i=0;i<nR;i++)for(let j=0;j<nG;j++){
+      if(arr[i][j]&&lbl[i][j]===0){
+        const q=[[i,j]];
+        while(q.length){const[r,c]=q.shift();lbl[r][c]=cnt;
+          for(const[dr,dc] of[[1,0],[-1,0],[0,1],[0,-1]]){
+            const nr=r+dr,nc=c+dc;
+            if(nr>=0&&nr<nR&&nc>=0&&nc<nG&&arr[nr][nc]&&lbl[nr][nc]===0){lbl[nr][nc]=-1;q.push([nr,nc]);}
+          }}cnt++;}
+    }
+    for(let i=0;i<nR;i++)for(let j=0;j<nG;j++)if(lbl[i][j]===-1)lbl[i][j]=0;
+    return[lbl,cnt-1];
+  }
+  function find_regions(vel,limits){
+    const nR=vel.length,nG=vel[0].length,lbl=Array.from({length:nR},()=>new Int32Array(nG));
+    let nf=0;
+    for(let li=0;li<limits.length-1;li++){
+      const lo=limits[li],hi=limits[li+1];
+      const inp=vel.map(row=>row.map(v=>v!==MASKED&&v>=lo&&v<hi));
+      const[ll,lf]=label_img(inp);
+      for(let i=0;i<nR;i++)for(let j=0;j<nG;j++)if(ll[i][j])lbl[i][j]+=ll[i][j]+nf;
+      nf+=lf;
+    }
+    return[lbl,nf];
+  }
+  function get_edges(lbl,data){
+    const nR=lbl.length,nG=lbl[0].length,eMap=new Map();
+    function add(a,b,va,vb){if(a===b||!a||!b)return;const k=a<b?`${a}_${b}`:`${b}_${a}`;
+      if(!eMap.has(k))eMap.set(k,{a:a<b?a:b,b:a<b?b:a,sv:0,nv:0,cnt:0});
+      const e=eMap.get(k);if(a<b){e.sv+=va;e.nv+=vb;}else{e.sv+=vb;e.nv+=va;}e.cnt++;}
+    for(let x=0;x<nR;x++)for(let y=0;y<nG;y++){
+      const lab=lbl[x][y];if(!lab)continue;const vel=data[x][y];
+      let xc=x-1;if(xc===-1&&wrap)xc=nR-1;
+      if(xc>=0){let nb=lbl[xc][y];if(!nb)for(let k=0;k<gapX&&!nb;k++){xc--;if(xc<0){if(wrap)xc=nR-1;else break;}nb=lbl[xc][y];}if(nb)add(lab,nb,vel,data[xc][y]);}
+      xc=x+1;if(xc===nR&&wrap)xc=0;
+      if(xc<nR){let nb=lbl[xc][y];if(!nb)for(let k=0;k<gapX&&!nb;k++){xc++;if(xc>=nR){if(wrap)xc=0;else break;}nb=lbl[xc][y];}if(nb)add(lab,nb,vel,data[xc][y]);}
+      let yc=y-1;
+      if(yc>=0){let nb=lbl[x][yc];if(!nb)for(let k=0;k<gapY&&!nb;k++){yc--;if(yc<0)break;nb=lbl[x][yc];}if(nb)add(lab,nb,vel,data[x][yc]);}
+      yc=y+1;
+      if(yc<nG){let nb=lbl[x][yc];if(!nb)for(let k=0;k<gapY&&!nb;k++){yc++;if(yc>=nG)break;nb=lbl[x][yc];}if(nb)add(lab,nb,vel,data[x][yc]);}
+    }
+    return[...eMap.values()];
+  }
+
+  const sdata=c2(velocities),scorr=c2(velocities);
+  const ni=2*nyquist_vel,limits=find_limits(nyquist_vel,splits,sdata);
+  const[labels,nf]=find_regions(sdata,limits);
+  if(nf<2)return scorr;
+
+  const rsizes=new Int32Array(nf+1);
+  for(const row of labels)for(const v of row)if(v>0)rsizes[v]++;
+
+  const edges=get_edges(labels,sdata);
+  if(!edges.length)return scorr;
+
+  const unwrap=new Int32Array(nf+1);
+  const par=Array.from({length:nf+1},(_,i)=>i);
+  const sz=rsizes.slice();
+  function find(x){while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;}
+
+  edges.sort((a,b)=>b.cnt-a.cnt);
+  for(const{a,b,sv,nv,cnt} of edges){
+    const ra=find(a),rb=find(b);if(ra===rb)continue;
+    const diff=(sv-nv)/cnt,rdiff=Math.round(diff);
+    let base=ra,merge=rb,fold=rdiff;
+    if(sz[rb]>sz[ra]){base=rb;merge=ra;fold=-rdiff;}
+    if(fold!==0)for(let i=1;i<=nf;i++)if(find(i)===merge)unwrap[i]+=fold;
+    par[merge]=base;sz[base]+=sz[merge];
+  }
+
+  let tf=0,tg=0;
+  for(let i=1;i<=nf;i++){tf+=rsizes[i]*unwrap[i];tg+=rsizes[i];}
+  if(tg>0){const off=Math.round(tf/tg);if(off)for(let i=0;i<=nf;i++)unwrap[i]-=off;}
+
+  for(let r=0;r<labels.length;r++)for(let g=0;g<labels[0].length;g++){
+    const lab=labels[r][g];if(lab&&unwrap[lab])scorr[r][g]+=unwrap[lab]*ni;}
+  return scorr;
 }
 
 // ── Level-2 velocity renderer ─────────────────────────────────────────────
@@ -454,26 +578,29 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
-  // Only dealias low-Nyquist clear-air scans (Nyquist < 12 m/s)
-  // Storm scans have Nyquist 20-35 m/s — raw data is already correct
+  // Pyart region-based dealiasing
   let nyquist = 0;
   for (let i = 0; i < NUM_AZ * numGates; i++) {
     const v = radialData[i];
     if (v > -900 && Math.abs(v) > nyquist) nyquist = Math.abs(v);
   }
-  if (nyquist > 0.5 && nyquist < 12.0) {
-    const twoNyq = 2 * nyquist;
+  if (nyquist > 0.5) {
+    const MASKED = -64.5;
+    const vel2d = [];
     for (let r = 0; r < NUM_AZ; r++) {
-      const row = r * numGates;
-      const vals = [];
-      for (let g = 0; g < numGates; g++) { const v=radialData[row+g]; if(v>-900)vals.push(v); }
-      if (vals.length < 5) continue;
-      vals.sort((a,b)=>a-b);
-      const med = vals[Math.floor(vals.length/2)];
-      const n = Math.round(-med / twoNyq);
-      if (n === 0) continue;
-      const shift = n * twoNyq;
-      for (let g = 0; g < numGates; g++) { if(radialData[row+g]>-900) radialData[row+g]+=shift; }
+      const row = [];
+      for (let g = 0; g < numGates; g++) {
+        const v = radialData[r * numGates + g];
+        row.push(v <= -900 ? MASKED : v);
+      }
+      vel2d.push(row);
+    }
+    const dealiased = dealias_region(vel2d, nyquist);
+    for (let r = 0; r < NUM_AZ; r++) {
+      for (let g = 0; g < numGates; g++) {
+        if (radialData[r * numGates + g] <= -900) continue;
+        radialData[r * numGates + g] = dealiased[r][g];
+      }
     }
   }
 
