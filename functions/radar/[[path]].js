@@ -118,111 +118,6 @@ function bzip2Decompress(input){
   return result;
 }
 
-/**
- * This implementation of a region based doppler dealiasing algorithm
- * was ported almost exactly from pyart's "dealias_region_based" function.
- * I used a specific commit as a reference point for this work, because
- * it was right when "scipy.sparse.coo_matrix" had stopped being used
- * by the algorithm.
- * 
- * You can find that commit here:
- * https://github.com/ARM-DOE/pyart/blob/41b34052dc36becd1783bb7dfb87c39570cab707/pyart/correct/region_dealias.py
- * 
- * All of this is to say that I only truly wrote a couple of lines of this code.
- * I simply ported pyart's dealiasing function from Python to JavaScript, with
- * a lot of help from ChatGPT and Google.
- */
-
-const np = {
-    // https://stackoverflow.com/a/40475362/18758797
-    linspace(startValue, stopValue, cardinality) {
-        var arr = [];
-        var step = (stopValue - startValue) / (cardinality - 1);
-        for (var i = 0; i < cardinality; i++) {
-            arr.push(startValue + (step * i));
-        }
-        return arr;
-    },
-    shape(arr) {
-        var numRows = arr.length;
-        var numCols = arr[0].length;
-        if (numRows == undefined) { numRows = 1 }
-        if (numCols == undefined) { numCols = 1 }
-        return [numRows, numCols];
-    },
-    zeros(shape) {
-        if (shape.length === 0) {
-            return 0;
-        } else {
-            const arr = new Array(shape[0]);
-            for (let i = 0; i < shape[0]; i++) {
-                arr[i] = this.zeros(shape.slice(1));
-            }
-            return arr;
-        }
-    },
-    ones_like(arr) {
-        return new Array(arr.length).fill(1);
-    },
-    bincount(arr) {
-        // Initialize the result array with zeros up to the maximum value in arr
-        let counts = new Array(max(arr) + 1).fill(0);
-        // Count the occurrences of each value in arr
-        for (let x of arr) {
-            counts[x] += 1;
-        }
-        return counts;
-    },
-    lexsort(arr1, arr2) {
-        const indices = Array.from({ length: arr1.length }, (_, i) => i);
-        indices.sort((a, b) => {
-            let cmp = arr1[a] - arr1[b];
-            if (cmp !== 0) {
-                return cmp;
-            }
-            return arr2[a] - arr2[b];
-        });
-        return indices;
-    },
-    nonzero(arr) {
-        return arr.reduce((acc, cur, i) => {
-            if (cur) {
-                acc.push(i);
-            }
-            return acc;
-        }, []);
-    },
-    argmax(arr) {
-        let maxIndex = 0;
-        for (let i = 1; i < arr.length; i++) {
-            if (arr[i] > arr[maxIndex]) {
-                maxIndex = i;
-            }
-        }
-        return maxIndex;
-    },
-    add: {
-        reduceat(arr, indices) {
-            var result = [];
-            for (var i = 0; i < indices.length; i++) {
-                // if (indices[i + 1] != undefined) {
-                    var curIndex = indices[i];
-                    var nextIndex = indices[i + 1];
-                    if (curIndex > nextIndex) {
-                        result.push(curIndex);
-                    } else {
-                        var sliced = arr.slice(curIndex, nextIndex);
-                        var added = sliced.reduce((a, b) => a + b, 0);
-                        result.push(added);
-                    }
-                // }
-            }
-            return result;
-        }
-    }
-}
-
-
 // ═══════════════════════════════════════════════════════════════
 // NEXRAD Level-2 parser → extract elevation 1 REF sweep
 // ═══════════════════════════════════════════════════════════════
@@ -418,31 +313,7 @@ function parseLevel2(rawBuf, product = 'ref') {
     radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
     for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-    // Velocity dealiasing
-    if (product === 'vel') {
-      let nyq = best.nyquist || 0;
-      if (!nyq) {
-        for (let i = 0; i < NUM_AZ * numGates; i++) {
-          const v = radialData[i];
-          if (v > -900 && Math.abs(v) > nyq) nyq = Math.abs(v);
-        }
-      }
-      if (nyq > 0.5) {
-        const twoNyq = 2 * nyq;
-        for (let r = 0; r < NUM_AZ; r++) {
-          const row = r * numGates;
-          const vals = [];
-          for (let g = 0; g < numGates; g++) { const v = radialData[row+g]; if (v > -900) vals.push(v); }
-          if (vals.length < 5) continue;
-          vals.sort((a, b) => a - b);
-          const med = vals[Math.floor(vals.length / 2)];
-          const n = Math.round(-med / twoNyq);
-          if (n === 0) continue;
-          const shift = n * twoNyq;
-          for (let g = 0; g < numGates; g++) { if (radialData[row+g] > -900) radialData[row+g] += shift; }
-        }
-      }
-    }
+    // Dealiasing handled in radarWorker.js (browser, AtticRadar pyart algorithm)
   }
 
   if (!radialData) {
@@ -601,7 +472,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v11-${product}/${rest}`;
+      const cacheId = `v12-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
