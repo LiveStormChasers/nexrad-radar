@@ -454,8 +454,13 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates, nyquist } = best;
 
-  // Velocity dealiasing: per-radial median shift
-  if (nyquist > 0) {
+  // Nyquist = max absolute raw velocity value (NEXRAD constrains all values within ±Nyquist)
+  let nyquist = 0;
+  for (let i = 0; i < NUM_AZ * numGates; i++) {
+    const v = radialData[i];
+    if (v > -900 && Math.abs(v) > nyquist) nyquist = Math.abs(v);
+  }
+  if (nyquist > 0.5) {
     const twoNyq = 2 * nyquist;
     for (let r = 0; r < NUM_AZ; r++) {
       const row = r * numGates;
