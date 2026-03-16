@@ -312,37 +312,31 @@ function parseLevel2(rawBuf, product = 'ref') {
     radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
     for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-    // Velocity dealiasing using actual Nyquist from RAD block.
-    // Problem: low-Nyquist scans fold UNIFORMLY across large spatial regions.
-    // Radial phase-unwrap fails when the first gate is already folded.
-    //
-    // Solution: for each radial, compute the local median velocity (using
-    // all gates in that radial), then shift all gates by the nearest integer
-    // multiple of 2×Nyquist so the median lands closest to 0.
-    // This works because within one radial the bulk of the wind is coherent.
-    if (product === 'vel' && best.nyquist > 0) {
-      const nyq = best.nyquist;
-      const twoNyq = 2 * nyq;
-      for (let r = 0; r < NUM_AZ; r++) {
-        const row = r * numGates;
-        // Collect valid values for this radial
-        const vals = [];
-        for (let g = 0; g < numGates; g++) {
-          const v = radialData[row + g];
-          if (v > -900) vals.push(v);
+    // Velocity dealiasing using Nyquist derived from data.
+    // NEXRAD encodes all velocities within [-Nyquist, +Nyquist] strictly.
+    // Therefore max(abs(raw_values)) = Nyquist exactly.
+    if (product === 'vel') {
+      let nyq = 0;
+      for (let i = 0; i < NUM_AZ * numGates; i++) {
+        const v = radialData[i];
+        if (v > -900 && Math.abs(v) > nyq) nyq = Math.abs(v);
+      }
+      if (nyq > 0.5) { // sanity check - must be at least 0.5 m/s
+        const twoNyq = 2 * nyq;
+        for (let r = 0; r < NUM_AZ; r++) {
+          const row = r * numGates;
+          const vals = [];
+          for (let g = 0; g < numGates; g++) { const v = radialData[row+g]; if (v > -900) vals.push(v); }
+          if (vals.length < 5) continue;
+          vals.sort((a, b) => a - b);
+          const med = vals[Math.floor(vals.length / 2)];
+          const n = Math.round(-med / twoNyq);
+          if (n === 0) continue;
+          const shift = n * twoNyq;
+          for (let g = 0; g < numGates; g++) { if (radialData[row+g] > -900) radialData[row+g] += shift; }
         }
-        if (vals.length < 5) continue;
-        // Compute median
-        vals.sort((a, b) => a - b);
-        const med = vals[Math.floor(vals.length / 2)];
-        // How many folds does the median need to move to be closest to 0?
-        const n = Math.round(-med / twoNyq);
-        if (n === 0) continue;
-        // Shift all valid gates by n × 2Nyquist
-        const shift = n * twoNyq;
-        for (let g = 0; g < numGates; g++) {
-          if (radialData[row + g] > -900) radialData[row + g] += shift;
-        }
+        // Store actual Nyquist in debugCuts
+        if (best) best.nyquist = nyq;
       }
     }
   }
@@ -501,7 +495,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v6-${product}/${rest}`;
+      const cacheId = `v7-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
