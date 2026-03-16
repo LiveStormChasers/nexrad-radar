@@ -153,6 +153,14 @@ function parseLevel2(rawBuf, product = 'ref') {
                 : product === 'cc'  ? [82,72,79]
                 :                     [82,69,70];
 
+  // For VEL/CC: collect all elevation cuts, pick the best one.
+  // Key insight: in split-cut VCPs the SHORTER-range Doppler cut (fewer gates)
+  // has a much higher Nyquist velocity than the long-range surveillance cut.
+  // e.g. VCP 215: elev-1 = 1832 gates, Nyquist 7.97 m/s (badly aliased)
+  //               elev-2 = 1192 gates, Nyquist 29.3 m/s (clean)
+  // We prefer fewer gates (= higher PRF = higher Nyquist = less folding).
+  const elevData = {};
+
   while (pos + 4 <= data.length) {
     const recSizeRaw = dv.getInt32(pos, false);
     pos += 4;
@@ -176,21 +184,6 @@ function parseLevel2(rawBuf, product = 'ref') {
       mpos += Math.max(msgBytes, 28);
     }
   }
-
-  function readBlock(chunk, base, bptr, ng, scl, ofs, dest, destNG) {
-    const dataOff = base + bptr + 28;
-    for (let g = 0; g < Math.min(ng, destNG); g++) {
-      if (dataOff + g >= chunk.length) break;
-      const raw = chunk[chunk.byteOffset + dataOff + g];
-      dest[g] = raw <= 1 ? -999 : (raw - ofs) / scl;
-    }
-  }
-
-  // For VEL/CC: collect data from ALL elevation cuts, then pick the best one.
-  // Different VCPs have VEL at different elevations with different range/resolution.
-  // OpenSnow picks the cut with the most gates — we do the same.
-  // Map: elevIdx → { radialData, numGates, firstGateM, gateSizeM, refData, refNumGates, azAngles, populated }
-  const elevData = {};
 
   function parseMsg31(chunk, base) {
     if (base + 68 > chunk.length) return;
@@ -290,22 +283,33 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  // VEL/CC: pick the elevation with the most gates (best range coverage).
-  // This matches OpenSnow's approach — they get 1832-gate velocity by using
-  // the longest-range VEL cut, not just the first one found.
+  // VEL/CC: pick the elevation with the FEWEST gates that is well-populated.
+  // Fewer gates = shorter range = higher PRF = higher Nyquist = less range folding.
+  // This matches the Doppler cut in split-cut VCPs (e.g. VCP 215 elev-2: 1192 gates,
+  // Nyquist 29.3 m/s) rather than the long-range surveillance cut (1832 gates, Nyquist 7.97 m/s).
   if (product !== 'ref') {
     const keys = Object.keys(elevData);
     if (keys.length === 0) return null;
     let best = null;
     for (const k of keys) {
       const ed = elevData[k];
+      // Must have at least 360 populated azimuths to be usable
+      if (ed.populated < 360) continue;
       if (!best ||
-          ed.numGates > best.numGates ||
+          ed.numGates < best.numGates ||
           (ed.numGates === best.numGates && ed.populated > best.populated)) {
         best = ed;
         foundElevIdx = +k;
       }
     }
+    // Fallback: if nothing had 360+ azimuths, take most populated regardless of gates
+    if (!best) {
+      for (const k of keys) {
+        const ed = elevData[k];
+        if (!best || ed.populated > best.populated) { best = ed; foundElevIdx = +k; }
+      }
+    }
+    if (!best) return null;
     numGates    = best.numGates;
     firstGateM  = best.firstGateM;
     gateSizeM   = best.gateSizeM;
