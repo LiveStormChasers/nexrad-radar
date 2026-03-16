@@ -330,14 +330,36 @@ function ccToRGBA(cc) {
 // velocity = (val - 129) * 0.5 m/s  (val 0=nodata, 1=range-folded, 2..254=data)
 function renderCompactVelFlat(buf) {
   const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
-  const rgba = new Uint8Array(numAz * numGates * 4);
+
+  // Decode all velocity values to float
+  const vel2d = [];
+  const MASKED = -64.5;
   for (let r = 0; r < numAz; r++) {
-    const src    = gateOffset + r * numGates;
-    const dstRow = r * numGates * 4;
+    const src = gateOffset + r * numGates;
+    const row = [];
     for (let g = 0; g < numGates; g++) {
       const val = data[src + g];
-      if (val <= 1) continue;
-      const mps = (val - 129) * 0.5;
+      row.push(val <= 1 ? MASKED : (val - 129) * 0.5);
+    }
+    vel2d.push(row);
+  }
+
+  // Find Nyquist from data range
+  let nyquist = 0;
+  for (const row of vel2d) for (const v of row) if (v !== MASKED && Math.abs(v) > nyquist) nyquist = Math.abs(v);
+
+  // Dealias if we have enough valid data
+  let dealiased = vel2d;
+  if (nyquist > 0.5) {
+    dealiased = dealias_region(vel2d, nyquist);
+  }
+
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const mps = dealiased[r][g];
+      if (mps === MASKED) continue;
       const rgb = velToRGBA(mps);
       if (!rgb) continue;
       const pi = dstRow + g * 4;
