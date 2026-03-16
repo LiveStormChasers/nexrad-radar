@@ -288,10 +288,10 @@ function parseLevel2(rawBuf, product = 'ref') {
   //   • Long-range (LR): most gates (1832), low Nyquist (~7.97 m/s, aliased)  → full coverage
   //   • Short-range (SR): fewer gates (1192), high Nyquist (~29.3 m/s, clean) → velocity reference
   // Strategy: use LR for coverage, use SR to unfold it gate-by-gate.
+  let debugCuts = '';
   if (product !== 'ref') {
     const allCuts = Object.values(elevData);
-    // Build debug string of all elevation cuts found
-    const debugCuts = allCuts.map(ed => `ng=${ed.numGates},pop=${ed.populated}`).join('|');
+    debugCuts = allCuts.map(ed => `ng=${ed.numGates},pop=${ed.populated}`).join('|');
     
     const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (candidates.length === 0) {
