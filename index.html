@@ -128,7 +128,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 .mapboxgl-ctrl-bottom-right{bottom:140px!important}
 .mapboxgl-ctrl-bottom-left{bottom:140px!important}
 
-  #radarSheet{position:fixed;bottom:0;left:0;right:0;z-index:950;pointer-events:auto;animation:slideUp .2s ease}
+  #radarSheet{position:fixed;bottom:120px;left:0;right:0;z-index:950;pointer-events:auto;animation:slideUp .2s ease}
   @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
   #sheetInner{background:#0d1420;border-top:1px solid #253040;border-radius:16px 16px 0 0;padding:16px 20px 32px;max-width:540px;margin:0 auto}
   .sheet-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -189,22 +189,6 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
     </div>
   </div>
 
-  <!-- Radar Settings Sheet (OpenSnow style) -->
-  <div id="radarSheet" style="display:none">
-    <div id="sheetInner">
-      <div class="sheet-row">
-        <span class="sheet-label">Radar Site</span>
-        <span class="sheet-site" id="sheetSiteName">—</span>
-      </div>
-      <div class="sheet-divider"></div>
-      <div class="sheet-row"><span class="sheet-label">Radar Data</span></div>
-      <div class="sheet-pills">
-        <button class="spill active" data-p="REF">Reflectivity</button>
-        <button class="spill" data-p="VEL">Velocity</button>
-        <button class="spill" data-p="CC">Corr. Coeff.</button>
-      </div>
-    </div>
-  </div>
   <!-- Glass panel: timeline + controls -->
   <div id="panel">
 
@@ -1123,6 +1107,23 @@ function updateLegend() {
 
 function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
 </script>
+
+  <!-- Radar Settings Sheet (OpenSnow style) — outside bottomWrap so fixed positioning works -->
+  <div id="radarSheet" style="display:none">
+    <div id="sheetInner">
+      <div class="sheet-row">
+        <span class="sheet-label">Radar Site</span>
+        <span class="sheet-site" id="sheetSiteName">—</span>
+      </div>
+      <div class="sheet-divider"></div>
+      <div class="sheet-row"><span class="sheet-label">Radar Data</span></div>
+      <div class="sheet-pills">
+        <button class="spill active" data-p="REF">Reflectivity</button>
+        <button class="spill" data-p="VEL">Velocity</button>
+        <button class="spill" data-p="CC">Corr. Coeff.</button>
+      </div>
+    </div>
+  </div>
 
   <div id="sheetBackdrop" onclick="closeSheet()"></div>
   <script>
