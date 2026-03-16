@@ -454,13 +454,14 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates, nyquist } = best;
 
-  // Nyquist = max absolute raw velocity value (NEXRAD constrains all values within ±Nyquist)
+  // Only dealias low-Nyquist clear-air scans (Nyquist < 12 m/s)
+  // Storm scans have Nyquist 20-35 m/s — raw data is already correct
   let nyquist = 0;
   for (let i = 0; i < NUM_AZ * numGates; i++) {
     const v = radialData[i];
     if (v > -900 && Math.abs(v) > nyquist) nyquist = Math.abs(v);
   }
-  if (nyquist > 0.5) {
+  if (nyquist > 0.5 && nyquist < 12.0) {
     const twoNyq = 2 * nyquist;
     for (let r = 0; r < NUM_AZ; r++) {
       const row = r * numGates;
