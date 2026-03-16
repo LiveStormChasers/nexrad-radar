@@ -409,13 +409,15 @@ function renderLevel2VelFlat(buf) {
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
       for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
+      const nyquist = dv2.getUint16(24, false) * 0.01;
       elevData[elevIdx] = {
         numGates:velNG, firstGateM:velFG, gateSizeM:velGS,
         radialData: new Float32Array(NUM_AZ*velNG).fill(-999),
         azAngles: az0,
         refNumGates: refNG>0?refNG:0,
         refData: refNG>0 ? new Float32Array(NUM_AZ*refNG).fill(-999) : null,
-        populated: 0
+        populated: 0,
+        nyquist
       };
     }
     const ed = elevData[elevIdx];
@@ -439,45 +441,29 @@ function renderLevel2VelFlat(buf) {
 
   const candidates = Object.values(elevData).filter(ed => ed.populated >= 360);
   if (!candidates.length) throw new Error('No VEL data found in any elevation');
-  candidates.sort((a, b) => a.numGates - b.numGates);
-  const srCut = candidates[0];
-  const lrCut = candidates[candidates.length - 1];
+  const best = candidates.reduce((b, e) => e.populated > b.populated ? e : b);
 
-  // Dual-cut dealiasing: use SR (high Nyquist) to unfold LR (low Nyquist)
-  if (srCut !== lrCut && srCut.numGates < lrCut.numGates * 0.9) {
-    let nyquistLR = 0;
-    for (let i = 0; i < NUM_AZ * lrCut.numGates; i++) {
-      const v = lrCut.radialData[i];
-      if (v > -900 && Math.abs(v) > nyquistLR) nyquistLR = Math.abs(v);
-    }
-    nyquistLR = Math.max(nyquistLR, 1.0);
-    const twoNyq = 2 * nyquistLR;
-    const srNG = srCut.numGates;
+  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates, nyquist } = best;
+
+  // Radial phase-unwrap dealiasing using Nyquist read from file header
+  if (nyquist > 0) {
+    const twoNyq = 2 * nyquist;
     for (let r = 0; r < NUM_AZ; r++) {
-      const lrRow = r * lrCut.numGates;
-      const srRow = r * srNG;
-      for (let g = 0; g < srNG && g < lrCut.numGates; g++) {
-        const lrV = lrCut.radialData[lrRow + g];
-        if (lrV <= -900) continue;
-        const srV = srCut.radialData[srRow + g];
-        if (srV <= -900) continue;
-        const n = Math.round((srV - lrV) / twoNyq);
-        if (n !== 0) lrCut.radialData[lrRow + g] = lrV + n * twoNyq;
-      }
-      for (let g = srNG; g < lrCut.numGates; g++) {
-        const lrV = lrCut.radialData[lrRow + g];
-        if (lrV <= -900) continue;
-        let prevV = -999;
-        for (let pg = g - 1; pg >= 0 && prevV <= -900; pg--) prevV = lrCut.radialData[lrRow + pg];
-        if (prevV <= -900) continue;
-        const diff = lrV - prevV;
-        if (diff > nyquistLR)       lrCut.radialData[lrRow + g] = lrV - twoNyq;
-        else if (diff < -nyquistLR) lrCut.radialData[lrRow + g] = lrV + twoNyq;
+      const row = r * numGates;
+      let prev = -999;
+      for (let g = 0; g < numGates; g++) {
+        let v = radialData[row + g];
+        if (v <= -900) { prev = -999; continue; }
+        if (prev > -900) {
+          const diff = v - prev;
+          if      (diff >  nyquist) v -= twoNyq;
+          else if (diff < -nyquist) v += twoNyq;
+          radialData[row + g] = v;
+        }
+        prev = v;
       }
     }
   }
-
-  const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = lrCut;
 
   // REF quality mask
   if (refData) {
