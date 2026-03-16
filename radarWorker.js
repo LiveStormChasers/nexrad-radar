@@ -255,28 +255,29 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── AtticRadar `velocity` color table (used for Super-Res Base Velocity) ──
-// Source: SteepAtticStairs/AtticRadar colormaps.js `velocity` variable
-// Units: KTS, converted to m/s (1 kt = 0.514444 m/s). Gradient between stops.
-// This is the green/purple palette AtticRadar shows on Super-Res Base Velocity.
+// ── AtticRadar `velocity` color table — EXACT segment colors from colortable_parser ──
+// Verified by running AtticRadar's colortable_parser against the velocity string 2026-03-16.
+// Each segment: [start_mps, end_mps, start_rgb, end_rgb]
+// Discontinuities between segments are intentional (hard edges at fold boundaries).
+// KT = m/s per knot for unit conversion.
 const KT = 0.514444;
 const VEL_RANGES = [
-  [-140*KT, -120*KT, [255,204,230], [252,  0,130]],
-  [-120*KT, -100*KT, [109,  2,150], [110,  3,151]],
-  [-100*KT,  -90*KT, [110,  3,151], [ 22, 13,156]],
-  [ -90*KT,  -80*KT, [ 24, 39,165], [ 30,111,188]],
-  [ -80*KT,  -70*KT, [ 30,111,188], [ 40,204,220]],
-  [ -70*KT,  -50*KT, [ 47,222,226], [181,237,239]],
-  [ -50*KT,  -40*KT, [181,237,239], [  2,241,  3]],
-  [ -40*KT,  -10*KT, [  3,234,  2], [  0,100,  0]],
-  [ -10*KT,    0    , [ 78,121, 76], [116,131,112]],
-  [   0    ,  10*KT, [137,117,122], [130, 51, 59]],
-  [  10*KT,   40*KT, [109,  0,  0], [242,  0,  7]],
-  [  40*KT,   55*KT, [249, 51, 76], [255,149,207]],
-  [  55*KT,   60*KT, [253,160,201], [255,232,172]],
-  [  60*KT,   80*KT, [253,228,160], [253,149, 83]],
-  [  80*KT,  120*KT, [254,142, 80], [110, 14,  9]],
-  [ 120*KT,  140*KT, [110, 14,  9], [110, 14,  9]],
+  [-140*KT, -120*KT, [255,204,230], [252,  0,130]],  // pale pink → hot pink
+  [-120*KT, -100*KT, [252,  0,130], [109,  2,150]],  // hot pink → dark purple
+  [-100*KT,  -90*KT, [110,  3,151], [ 22, 13,156]],  // purple → darker purple
+  [ -90*KT,  -80*KT, [ 24, 39,165], [ 30,111,188]],  // navy → medium blue
+  [ -80*KT,  -70*KT, [ 30,111,188], [ 40,204,220]],  // medium blue → cyan
+  [ -70*KT,  -50*KT, [ 47,222,226], [181,237,239]],  // bright cyan → pale cyan
+  [ -50*KT,  -40*KT, [181,237,239], [  2,241,  3]],  // pale cyan → bright green
+  [ -40*KT,  -10*KT, [  3,234,  2], [  0,100,  0]],  // bright green → dark green
+  [ -10*KT,    0    , [ 78,121, 76], [116,131,112]],  // grey-green → grey-green
+  [   0    ,  10*KT, [137,117,122], [130, 51, 59]],   // grey → dark brownish
+  [  10*KT,   40*KT, [109,  0,  0], [242,  0,  7]],   // dark red → bright red
+  [  40*KT,   55*KT, [249, 51, 76], [255,149,207]],   // red-pink → light pink
+  [  55*KT,   60*KT, [253,160,201], [255,232,172]],   // light pink → cream
+  [  60*KT,   80*KT, [253,228,160], [253,149, 83]],   // cream → orange
+  [  80*KT,  120*KT, [254,142, 80], [110, 14,  9]],   // orange → dark red/brown
+  [ 120*KT,  140*KT, [110, 14,  9], [  0,  0,  0]],   // dark red/brown → black
 ];
 
 function velToRGBA(mps) {
