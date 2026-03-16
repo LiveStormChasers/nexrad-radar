@@ -392,13 +392,22 @@ function renderLevel2VelFlat(buf) {
     const nBlocks = dv2.getUint16(30, false);
     let velPtr=-1,velNG=0,velScl=1,velOfs=0,velFG=0,velGS=0;
     let refPtr=-1,refNG=0,refScl=1,refOfs=0;
+    let radNyquist=0;
     for (let b = 0; b < nBlocks && b < 10; b++) {
       if (base + 32 + (b+1)*4 > chunk.length) break;
       const ptr   = dv2.getUint32(32 + b*4, false);
       const bbase = chunk.byteOffset + base + ptr;
-      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
-      if (chunk[bbase] !== 68) continue;
-      const b1=chunk[bbase+1],b2=chunk[bbase+2],b3=chunk[bbase+3];
+      if (bbase + 4 > chunk.byteOffset + chunk.length) continue;
+      const t0=chunk[bbase],b1=chunk[bbase+1],b2=chunk[bbase+2],b3=chunk[bbase+3];
+      // RAD block: type 'R'=82, name 'R','A','D'
+      if (t0===82&&b1===82&&b2===65&&b3===68) {
+        if (bbase+14<=chunk.byteOffset+chunk.length) {
+          const rbdv=new DataView(chunk.buffer,bbase);
+          radNyquist=rbdv.getUint16(12,false)*0.01;
+        }
+        continue;
+      }
+      if (t0!==68) continue;
       const bdv = new DataView(chunk.buffer, bbase);
       const ng=bdv.getUint16(8,false),fg=bdv.getUint16(10,false),gs=bdv.getUint16(12,false);
       const scl=bdv.getFloat32(20,false),ofs=bdv.getFloat32(24,false);
@@ -417,10 +426,11 @@ function renderLevel2VelFlat(buf) {
         refNumGates: refNG>0?refNG:0,
         refData: refNG>0 ? new Float32Array(NUM_AZ*refNG).fill(-999) : null,
         populated: 0,
-        nyquist
+        nyquist: radNyquist
       };
     }
     const ed = elevData[elevIdx];
+    if (radNyquist > 0 && ed.nyquist === 0) ed.nyquist = radNyquist;
     if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
     ed.azAngles[azBin] = az;
     const velOff=base+velPtr+28;
