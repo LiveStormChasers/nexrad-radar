@@ -248,12 +248,15 @@ function parseLevel2(rawBuf, product = 'ref') {
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
       for (let i = 0; i < NUM_AZ; i++) az0[i] = i * 0.5;
+      // Nyquist velocity is at offset 24 in the radial header (u16 BE, units 0.01 m/s)
+      const nyquist = dv2.getUint16(24, false) * 0.01;
       elevData[elevIdx] = {
         numGates: primaryNG, firstGateM: primaryFG, gateSizeM: primaryGS,
         radialData: new Float32Array(NUM_AZ * primaryNG).fill(-999),
         azAngles: az0,
         refData: null, refNumGates: 0,
-        populated: 0
+        populated: 0,
+        nyquist
       };
       if (refNG > 0) {
         elevData[elevIdx].refNumGates = refNG;
@@ -283,74 +286,41 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  // VEL/CC: pick the best elevation cuts.
-  // Split-cut VCPs produce TWO 0.5° scans:
-  //   • Long-range (LR): most gates (1832), low Nyquist (~7.97 m/s, aliased)  → full coverage
-  //   • Short-range (SR): fewer gates (1192), high Nyquist (~29.3 m/s, clean) → velocity reference
-  // Strategy: use LR for coverage, use SR to unfold it gate-by-gate.
+  // VEL: pick most-populated cut with ≥360 azimuths (or best available)
   let debugCuts = '';
   if (product !== 'ref') {
     const allCuts = Object.values(elevData);
-    debugCuts = allCuts.map(ed => `ng=${ed.numGates},pop=${ed.populated}`).join('|');
-    
+    debugCuts = allCuts.map(ed => `ng=${ed.numGates},nyq=${ed.nyquist?.toFixed(1)},pop=${ed.populated}`).join('|');
+
     const candidates = allCuts.filter(ed => ed.populated >= 360);
-    if (candidates.length === 0) {
-      // fallback: most populated regardless
-      const all = Object.values(elevData);
-      if (!all.length) return null;
-      const best = all.reduce((b, e) => e.populated > b.populated ? e : b);
-      numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
-      radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
-      for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
-    } else {
-      candidates.sort((a, b) => a.numGates - b.numGates);
-      const srCut = candidates[0];                          // fewest gates = high Nyquist
-      const lrCut = candidates[candidates.length - 1];     // most gates   = low Nyquist
+    const best = candidates.length
+      ? candidates.reduce((b, e) => e.populated > b.populated ? e : b)
+      : allCuts.reduce((b, e) => e.populated > b.populated ? e : b);
+    if (!best) return null;
 
-      numGates = lrCut.numGates; firstGateM = lrCut.firstGateM; gateSizeM = lrCut.gateSizeM;
-      radialData = lrCut.radialData; refData = lrCut.refData; refNumGates = lrCut.refNumGates;
-      for (let i = 0; i < NUM_AZ; i++) azAngles[i] = lrCut.azAngles[i];
+    numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
+    radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
+    for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-      // Velocity dealiasing using SR as reference
-      if (product === 'vel' && srCut !== lrCut && srCut.numGates < lrCut.numGates * 0.9) {
-        // Derive Nyquist of the LR cut from its max decoded value
-        let nyquistLR = 0;
-        for (let i = 0; i < NUM_AZ * lrCut.numGates; i++) {
-          const v = lrCut.radialData[i];
-          if (v > -900 && Math.abs(v) > nyquistLR) nyquistLR = Math.abs(v);
-        }
-        nyquistLR = Math.max(nyquistLR, 1.0); // safety floor
-        const twoNyq = 2 * nyquistLR;
-
-        const srNG = srCut.numGates;
-        for (let r = 0; r < NUM_AZ; r++) {
-          const lrRow = r * lrCut.numGates;
-          const srRow = r * srNG;
-
-          // Phase 1: unfold inner gates using SR as reference
-          for (let g = 0; g < srNG && g < lrCut.numGates; g++) {
-            const lrV = lrCut.radialData[lrRow + g];
-            if (lrV <= -900) continue;
-            const srV = srCut.radialData[srRow + g];
-            if (srV <= -900) continue;
-            const n = Math.round((srV - lrV) / twoNyq);
-            if (n !== 0) lrCut.radialData[lrRow + g] = lrV + n * twoNyq;
+    // Velocity dealiasing: radial phase-unwrap using actual Nyquist from file header.
+    // For each ray, iterate gate-by-gate outward from the radar. When a gate differs
+    // from the previous valid gate by more than Nyquist, add/subtract 2×Nyquist.
+    if (product === 'vel' && best.nyquist > 0) {
+      const nyq = best.nyquist;
+      const twoNyq = 2 * nyq;
+      for (let r = 0; r < NUM_AZ; r++) {
+        const row = r * numGates;
+        let prev = -999;
+        for (let g = 0; g < numGates; g++) {
+          let v = radialData[row + g];
+          if (v <= -900) { prev = -999; continue; }
+          if (prev > -900) {
+            const diff = v - prev;
+            if      (diff >  nyq) v -= twoNyq;
+            else if (diff < -nyq) v += twoNyq;
+            radialData[row + g] = v;
           }
-
-          // Phase 2: extend beyond SR range using radial phase unwrap
-          for (let g = srNG; g < lrCut.numGates; g++) {
-            const lrV = lrCut.radialData[lrRow + g];
-            if (lrV <= -900) continue;
-            // find closest valid inner gate as anchor
-            let prevV = -999;
-            for (let pg = g - 1; pg >= 0 && prevV <= -900; pg--) {
-              prevV = lrCut.radialData[lrRow + pg];
-            }
-            if (prevV <= -900) continue;
-            const diff = lrV - prevV;
-            if (diff > nyquistLR)        lrCut.radialData[lrRow + g] = lrV - twoNyq;
-            else if (diff < -nyquistLR)  lrCut.radialData[lrRow + g] = lrV + twoNyq;
-          }
+          prev = v;
         }
       }
     }
