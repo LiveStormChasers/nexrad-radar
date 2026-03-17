@@ -592,6 +592,12 @@ function renderLevel2VelFlat(buf) {
     ed.azAngles[azBin] = az;
     const velOff=base+velPtr+28;
     const vel2byte = (ed.velWordSize||velWordSize) === 16;
+    if (azBin === 0 && !self._velDebugLogged) {
+      self._velDebugLogged = true;
+      const rv0 = vel2byte ? ((chunk[chunk.byteOffset+velOff]<<8)|chunk[chunk.byteOffset+velOff+1]) : chunk[chunk.byteOffset+velOff];
+      const mps0 = rv0 <= 1 ? null : (rv0 - velOfs) / velScl;
+      console.log('[VEL DEBUG] wordSize='+velWordSize+' scl='+velScl.toFixed(3)+' ofs='+velOfs.toFixed(1)+' vel2byte='+vel2byte+' rv0='+rv0+' mps0='+(mps0?mps0.toFixed(1):'null'));
+    }
     for(let g=0;g<velNG&&g<ed.numGates;g++){
       const off = velOff + g*(vel2byte?2:1);
       if(off+1>chunk.length)break;
