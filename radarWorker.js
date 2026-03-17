@@ -327,11 +327,48 @@ const VEL_LUT = new Uint8Array([
   102,15,9,255,0,0,0,0
 ]);
 
-function velToRGBA(mps) {
-  if (isNaN(mps) || mps === null) return null;
-  const val = Math.max(2, Math.min(254, Math.round(mps / 0.5) + 129));
-  const i = val * 4;
-  return [VEL_LUT[i], VEL_LUT[i+1], VEL_LUT[i+2], VEL_LUT[i+3]];
+// ── Velocity color lookup — AtticRadar colormaps.js velocity table, units: KTS ──
+// Exact color stops from AtticRadar/app/radar/colormaps/colormaps.js
+// LAB-interpolated using chroma.scale().mode('lab')
+const VEL_STOPS = [
+  [-140,[255,204,230]],
+  [-120,[252,0,130]],[-120,[109,2,150]],
+  [-100,[110,3,151]],[-100,[22,13,156]],
+  [-90,[24,39,165]], [-90,[30,111,188]],
+  [-80,[30,111,188]],[-80,[40,204,220]],
+  [-70,[47,222,226]],[-70,[181,237,239]],
+  [-50,[181,237,239]],[-50,[2,241,3]],
+  [-40,[3,234,2]],  [-40,[0,100,0]],
+  [-10,[78,121,76]],[-10,[116,131,112]],
+  [0,  [137,117,122]],[0,[130,51,59]],
+  [10, [109,0,0]],  [10,[242,0,7]],
+  [40, [249,51,76]], [40,[255,149,207]],
+  [55, [253,160,201]],[55,[255,232,172]],
+  [60, [253,228,160]],[60,[253,149,83]],
+  [80, [254,142,80]], [80,[110,14,9]],
+  [120,[110,14,9]],
+  [140,[0,0,0]]
+];
+
+function velToRGBA(kts) {
+  if (isNaN(kts) || kts === null) return null;
+  const stops = VEL_STOPS;
+  if (kts <= stops[0][0]) return stops[0][1];
+  if (kts >= stops[stops.length-1][0]) return stops[stops.length-1][1];
+  // Find surrounding stops
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [v0, c0] = stops[i];
+    const [v1, c1] = stops[i+1];
+    if (kts >= v0 && kts <= v1) {
+      const t = v1 === v0 ? 0 : (kts - v0) / (v1 - v0);
+      return [
+        Math.round(c0[0] + t * (c1[0] - c0[0])),
+        Math.round(c0[1] + t * (c1[1] - c0[1])),
+        Math.round(c0[2] + t * (c1[2] - c0[2]))
+      ];
+    }
+  }
+  return null;
 }
 
 
@@ -405,9 +442,9 @@ function renderCompactVelFlat(buf) {
       }
       const mps = dealiased[r][g];
       if (mps === null || mps === undefined) continue;
-      const val = Math.max(2, Math.min(254, Math.round(mps / 0.5) + 129));
-      const i = val * 4;
-      rgba[pi]=VEL_LUT[i]; rgba[pi+1]=VEL_LUT[i+1]; rgba[pi+2]=VEL_LUT[i+2]; rgba[pi+3]=255;
+      const rgb = velToRGBA(mps * 1.9426);
+      if (!rgb) continue;
+      rgba[pi]=rgb[0]; rgba[pi+1]=rgb[1]; rgba[pi+2]=rgb[2]; rgba[pi+3]=255;
     }
   }
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
@@ -598,7 +635,7 @@ function renderLevel2VelFlat(buf) {
       const rv = vel2byte
         ? ((chunk[chunk.byteOffset+off]<<8)|chunk[chunk.byteOffset+off+1])
         : chunk[chunk.byteOffset+off];
-      ed.radialData[azBin*ed.numGates+g]=rv<=1?-999:(rv-velOfs)/velScl;
+      ed.radialData[azBin*ed.numGates+g]=rv===1?-9999:(rv<=0?-999:(rv-velOfs)/velScl);
     }
     if(refPtr>=0&&ed.refData){
       const refOff=base+refPtr+28;
@@ -618,17 +655,23 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
-  // Raw velocity — no dealiasing, no REF mask (matches AtticRadar default)
-
+  // Raw velocity — RF=purple, velocity=color table (m/s→knots→LUT like AtticRadar)
+  const MPS_TO_KTS = 1.9426;
   const rgba = new Uint8Array(NUM_AZ * numGates * 4);
   for (let r = 0; r < NUM_AZ; r++) {
     for (let g = 0; g < numGates; g++) {
       const mps = radialData[r * numGates + g];
-      if (mps <= -900) continue;
-      const rgb = velToRGBA(mps);
-      if (!rgb) continue;
       const pi = (r * numGates + g) * 4;
-      rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
+      if (mps === -9999) {
+        // Range-folded: AtticRadar purple rgb(139,0,218)
+        rgba[pi]=139; rgba[pi+1]=0; rgba[pi+2]=218; rgba[pi+3]=255;
+      } else if (mps > -900) {
+        // Convert m/s → knots, then look up color same as AtticRadar
+        const kts = mps * MPS_TO_KTS;
+        const rgb = velToRGBA(kts);
+        if (!rgb) continue;
+        rgba[pi] = rgb[0]; rgba[pi+1] = rgb[1]; rgba[pi+2] = rgb[2]; rgba[pi+3] = 255;
+      }
     }
   }
   const maxRangeM = firstGateM + numGates * gateSizeM;
