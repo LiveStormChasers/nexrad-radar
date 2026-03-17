@@ -604,9 +604,11 @@ function renderLevel2VelFlat(buf) {
     }
   }
 
-  const candidates = Object.values(elevData).filter(ed => ed.populated >= 360);
-  if (!candidates.length) throw new Error('No VEL data found in any elevation');
-  const best = candidates.reduce((b, e) => e.populated > b.populated ? e : b);
+  const allElevs = Object.values(elevData);
+  if (!allElevs.length) throw new Error('No VEL data found in any elevation');
+  const candidates = allElevs.filter(ed => ed.populated >= 180);
+  const best = (candidates.length ? candidates : allElevs)
+    .reduce((b, e) => e.populated > b.populated ? e : b);
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
