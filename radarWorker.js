@@ -546,7 +546,7 @@ function renderLevel2VelFlat(buf) {
     const az    = dv2.getFloat32(12, false);
     const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
     const nBlocks = dv2.getUint16(30, false);
-    let velPtr=-1,velNG=0,velScl=1,velOfs=0,velFG=0,velGS=0;
+    let velPtr=-1,velNG=0,velScl=1,velOfs=0,velFG=0,velGS=0,velWordSize=8;
     let refPtr=-1,refNG=0,refScl=1,refOfs=0;
     let radNyquist=0;
     for (let b = 0; b < nBlocks && b < 10; b++) {
@@ -567,7 +567,8 @@ function renderLevel2VelFlat(buf) {
       const bdv = new DataView(chunk.buffer, bbase);
       const ng=bdv.getUint16(8,false),fg=bdv.getUint16(10,false),gs=bdv.getUint16(12,false);
       const scl=bdv.getFloat32(20,false),ofs=bdv.getFloat32(24,false);
-      if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs; }
+      const wordSize=chunk[bbase+19];
+      if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs;velWordSize=wordSize; }
       if (b1===82&&b2===69&&b3===70) { refPtr=ptr;refNG=ng;refScl=scl;refOfs=ofs; }
     }
     if (velPtr < 0) return;
@@ -581,7 +582,8 @@ function renderLevel2VelFlat(buf) {
         refNumGates: refNG>0?refNG:0,
         refData: refNG>0 ? new Float32Array(NUM_AZ*refNG).fill(-999) : null,
         populated: 0,
-        nyquist: radNyquist
+        nyquist: radNyquist,
+        velWordSize: velWordSize
       };
     }
     const ed = elevData[elevIdx];
@@ -589,9 +591,13 @@ function renderLevel2VelFlat(buf) {
     if (ed.radialData[azBin * ed.numGates] <= -900) ed.populated++;
     ed.azAngles[azBin] = az;
     const velOff=base+velPtr+28;
+    const vel2byte = (ed.velWordSize||velWordSize) === 16;
     for(let g=0;g<velNG&&g<ed.numGates;g++){
-      if(velOff+g>=chunk.length)break;
-      const rv=chunk[chunk.byteOffset+velOff+g];
+      const off = velOff + g*(vel2byte?2:1);
+      if(off+1>chunk.length)break;
+      const rv = vel2byte
+        ? ((chunk[chunk.byteOffset+off]<<8)|chunk[chunk.byteOffset+off+1])
+        : chunk[chunk.byteOffset+off];
       ed.radialData[azBin*ed.numGates+g]=rv<=1?-999:(rv-velOfs)/velScl;
     }
     if(refPtr>=0&&ed.refData){
