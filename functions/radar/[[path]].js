@@ -140,6 +140,7 @@ function parseLevel2(rawBuf, product = 'ref') {
   let radialData = null;
   let numGates = 0, firstGateM = 0, gateSizeM = 0;
   let foundElevIdx = null;
+  let refPopulated = 0;
 
   // For VEL/CC we also extract co-located REF to use as a quality mask.
   // Gates with REF below threshold are noise/clutter → set to no-data.
@@ -245,6 +246,9 @@ function parseLevel2(rawBuf, product = 'ref') {
         radialData = new Float32Array(NUM_AZ * primaryNG).fill(-999);
         foundElevIdx = elevIdx;
       }
+      // Only write this elevation's radials
+      if (elevIdx !== foundElevIdx) return;
+      if (radialData[azBin * numGates] <= -900) refPopulated++;
       azAngles[azBin] = az;
       const dataOff = base + primaryPtr + 28;
       for (let g = 0; g < primaryNG && g < numGates; g++) {
@@ -337,7 +341,11 @@ function parseLevel2(rawBuf, product = 'ref') {
     }
   }
 
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete: true, debugCuts };
+  const populatedCount = product === 'ref' ? refPopulated
+                       : (Object.values(elevData).find(ed => ed.radialData === radialData)?.populated ?? 0);
+  const isComplete = populatedCount >= 360;
+
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -462,7 +470,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v14-${product}/${rest}`;
+      const cacheId = `v16-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
