@@ -794,7 +794,7 @@ async function loadStation() {
 
     // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
-    const CONCURRENCY = 8;
+    const CONCURRENCY = 4;
     let rIdx = 0;
     async function runWorkerSlot() {
       while (rIdx < remaining.length) {
@@ -1139,24 +1139,25 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    // AtticRadar velocity color table, knot values mapped to % of -140→+140 kts range
     bar.style.background = 'linear-gradient(to right,' +
-      'rgb(255,204,230) 0%,' +    // -140 kts
-      'rgb(109,2,150) 14%,' +     // -120 kts
-      'rgb(22,13,156) 21%,' +     // -100 kts
-      'rgb(30,111,188) 25%,' +    // -90 kts
-      'rgb(40,204,220) 29%,' +    // -80 kts
-      'rgb(181,237,239) 32%,' +   // -70 kts
-      'rgb(2,241,3) 36%,' +       // -50 kts
-      'rgb(0,100,0) 43%,' +       // -40 kts
-      'rgb(116,131,112) 50%,' +   // -10 kts
-      'rgb(130,51,59) 50%,' +     // 0 kts (hard transition)
-      'rgb(242,0,7) 54%,' +       // +10 kts
-      'rgb(255,149,207) 64%,' +   // +40 kts
-      'rgb(255,232,172) 70%,' +   // +55 kts
-      'rgb(253,149,83) 71%,' +    // +60 kts
-      'rgb(110,14,9) 79%,' +      // +80 kts
-      'rgb(0,0,0) 100%)';         // +140 kts
+      'rgb(255,204,230) 0%,' +      // -140 kts → -120 solid
+      'rgb(255,204,230) 14.3%,' +   // -120 kts hard cut
+      'rgb(252,0,130) 14.3%,' +     // -120 kts start
+      'rgb(109,2,150) 28.6%,' +     // -100 kts
+      'rgb(110,3,151) 28.6%,' +     // -100 hard cut
+      'rgb(22,13,156) 35.7%,' +     // -90 kts
+      'rgb(24,39,165) 35.7%,' +     // -90 hard cut
+      'rgb(30,111,188) 42.9%,' +    // -80 kts
+      'rgb(30,111,188) 42.9%,' +    // -80 (continuous)
+      'rgb(40,204,220) 50%,' +      // -70 kts
+      'rgb(47,222,226) 50%,' +      // -70 hard cut
+      'rgb(181,237,239) 64.3%,' +   // -50 kts
+      'rgb(181,237,239) 64.3%,' +   // -50 (continuous)
+      'rgb(2,241,3) 71.4%,' +       // -40 kts
+      'rgb(3,234,2) 71.4%,' +       // -40 hard cut
+      'rgb(0,100,0) 92.9%,' +       // -10 kts
+      'rgb(78,121,76) 92.9%,' +     // -10 hard cut
+      'rgb(116,131,112) 100%)';     // 0 kts
     labels.innerHTML = '<span>−64</span><span>−32</span><span>−10</span><span>0</span><span>+10</span><span>+32</span><span>+64 m/s</span>';
   } else if (curProduct === 'CC') {
     bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
