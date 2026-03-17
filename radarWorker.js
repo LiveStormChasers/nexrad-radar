@@ -328,47 +328,63 @@ const VEL_LUT = new Uint8Array([
 ]);
 
 // ── Velocity color lookup — AtticRadar colormaps.js velocity table, units: KTS ──
-// Exact color stops from AtticRadar/app/radar/colormaps/colormaps.js
-// LAB-interpolated using chroma.scale().mode('lab')
-const VEL_STOPS = [
-  [-140,[255,204,230]],
-  [-120,[252,0,130]],[-120,[109,2,150]],
-  [-100,[110,3,151]],[-100,[22,13,156]],
-  [-90,[24,39,165]], [-90,[30,111,188]],
-  [-80,[30,111,188]],[-80,[40,204,220]],
-  [-70,[47,222,226]],[-70,[181,237,239]],
-  [-50,[181,237,239]],[-50,[2,241,3]],
-  [-40,[3,234,2]],  [-40,[0,100,0]],
-  [-10,[78,121,76]],[-10,[116,131,112]],
-  [0,  [137,117,122]],[0,[130,51,59]],
-  [10, [109,0,0]],  [10,[242,0,7]],
-  [40, [249,51,76]], [40,[255,149,207]],
-  [55, [253,160,201]],[55,[255,232,172]],
-  [60, [253,228,160]],[60,[253,149,83]],
-  [80, [254,142,80]], [80,[110,14,9]],
-  [120,[110,14,9]],
-  [140,[0,0,0]]
-];
-
+// Linear interpolation between AtticRadar's exact color stops
+// Each pair of same-value stops = hard transition at that value
 function velToRGBA(kts) {
   if (isNaN(kts) || kts === null) return null;
-  const stops = VEL_STOPS;
+  // AtticRadar velocity color table (knots), from colormaps.js
+  // Duplicate knot values = hard color transition
+  const stops = [
+    [-140,[255,204,230]],
+    [-120,[252,0,130]],
+    [-120,[109,2,150]],
+    [-100,[110,3,151]],
+    [-100,[22,13,156]],
+    [-90, [24,39,165]],
+    [-90, [30,111,188]],
+    [-80, [30,111,188]],
+    [-80, [40,204,220]],
+    [-70, [47,222,226]],
+    [-70, [181,237,239]],
+    [-50, [181,237,239]],
+    [-50, [2,241,3]],
+    [-40, [3,234,2]],
+    [-40, [0,100,0]],
+    [-10, [78,121,76]],
+    [-10, [116,131,112]],
+    [0,   [137,117,122]],
+    [0,   [130,51,59]],
+    [10,  [109,0,0]],
+    [10,  [242,0,7]],
+    [40,  [249,51,76]],
+    [40,  [255,149,207]],
+    [55,  [253,160,201]],
+    [55,  [255,232,172]],
+    [60,  [253,228,160]],
+    [60,  [253,149,83]],
+    [80,  [254,142,80]],
+    [80,  [110,14,9]],
+    [120, [110,14,9]],
+    [140, [0,0,0]]
+  ];
   if (kts <= stops[0][0]) return stops[0][1];
   if (kts >= stops[stops.length-1][0]) return stops[stops.length-1][1];
-  // Find surrounding stops
   for (let i = 0; i < stops.length - 1; i++) {
     const [v0, c0] = stops[i];
     const [v1, c1] = stops[i+1];
-    if (kts >= v0 && kts <= v1) {
-      const t = v1 === v0 ? 0 : (kts - v0) / (v1 - v0);
+    if (kts >= v0 && kts < v1) {
+      // Hard transition: if v0===v1 just use c1
+      if (v0 === v1) return c1;
+      const t = (kts - v0) / (v1 - v0);
       return [
-        Math.round(c0[0] + t * (c1[0] - c0[0])),
-        Math.round(c0[1] + t * (c1[1] - c0[1])),
-        Math.round(c0[2] + t * (c1[2] - c0[2]))
+        Math.round(c0[0] + t*(c1[0]-c0[0])),
+        Math.round(c0[1] + t*(c1[1]-c0[1])),
+        Math.round(c0[2] + t*(c1[2]-c0[2]))
       ];
     }
+    if (kts === v1) return c1;
   }
-  return null;
+  return stops[stops.length-1][1];
 }
 
 
