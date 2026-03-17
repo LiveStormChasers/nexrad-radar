@@ -420,7 +420,7 @@ function renderCompactVelFlat(buf) {
 
   // Run AtticRadar's exact pyart region-based dealiasing
   let dealiased = vel2d;
-  if (nyq >= 20) {
+  if (nyq > 0.5) {
     try { dealiased = dealias(vel2d, nyq); } catch(e) { dealiased = vel2d; }
   }
 
@@ -449,98 +449,27 @@ function renderCompactVelFlat(buf) {
 
 // ── Pyart region-based dealiasing (ported from AtticRadar/dealias.js) ────────
 function dealias(velocities, nyquist_vel) {
-  const MASKED=-64.5,splits=3,gapX=99,gapY=100,wrap=true;
-  function c2(a){return a.map(r=>r.slice());}
-  function ls(s,e,n){const a=[],st=(e-s)/(n-1);for(let i=0;i<n;i++)a.push(s+st*i);return a;}
-  function find_limits(nyq,sp,vd){
-    const interval=(2*nyq)/sp;let as=0,ae=0;
-    const all=vd.flat().filter(v=>v!==MASKED);
-    if(all.length){let mx=-Infinity,mn=Infinity;for(const v of all){if(v>mx)mx=v;if(v<mn)mn=v;}
-      if(mx>nyq||mn<-nyq){as=Math.ceil((mx-nyq)/interval)|0;ae=Math.ceil(-(mn+nyq)/interval)|0;}}
-    return ls(-nyq-as*interval,nyq+ae*interval,sp+1+as+ae);
-  }
-  function label_img(arr){
-    const nR=arr.length,nG=arr[0].length,lbl=Array.from({length:nR},()=>new Int32Array(nG));
-    let cnt=1;
-    for(let i=0;i<nR;i++)for(let j=0;j<nG;j++){
-      if(arr[i][j]&&lbl[i][j]===0){
-        const q=[[i,j]];
-        while(q.length){const[r,c]=q.shift();lbl[r][c]=cnt;
-          for(const[dr,dc] of[[1,0],[-1,0],[0,1],[0,-1]]){
-            const nr=r+dr,nc=c+dc;
-            if(nr>=0&&nr<nR&&nc>=0&&nc<nG&&arr[nr][nc]&&lbl[nr][nc]===0){lbl[nr][nc]=-1;q.push([nr,nc]);}
-          }}cnt++;}
+  const nAz = velocities.length, nG = velocities[0].length;
+  const twoNyq = 2 * nyquist_vel;
+  const res = velocities.map(r => r.slice());
+  for (let g = 0; g < nG; g++) {
+    const seedVals = [];
+    for (let r = 0; r < nAz && seedVals.length < 20; r++)
+      if (velocities[r][g] !== null) seedVals.push(velocities[r][g]);
+    if (!seedVals.length) continue;
+    seedVals.sort((a, b) => a - b);
+    let ref = seedVals[Math.floor(seedVals.length / 2)];
+    for (let r = 0; r < nAz; r++) {
+      if (res[r][g] === null) continue;
+      const n = Math.round((ref - res[r][g]) / twoNyq);
+      res[r][g] += n * twoNyq;
+      ref = res[r][g];
     }
-    for(let i=0;i<nR;i++)for(let j=0;j<nG;j++)if(lbl[i][j]===-1)lbl[i][j]=0;
-    return[lbl,cnt-1];
   }
-  function find_regions(vel,limits){
-    const nR=vel.length,nG=vel[0].length,lbl=Array.from({length:nR},()=>new Int32Array(nG));
-    let nf=0;
-    for(let li=0;li<limits.length-1;li++){
-      const lo=limits[li],hi=limits[li+1];
-      const inp=vel.map(row=>row.map(v=>v!==MASKED&&v>=lo&&v<hi));
-      const[ll,lf]=label_img(inp);
-      for(let i=0;i<nR;i++)for(let j=0;j<nG;j++)if(ll[i][j])lbl[i][j]+=ll[i][j]+nf;
-      nf+=lf;
-    }
-    return[lbl,nf];
-  }
-  function get_edges(lbl,data){
-    const nR=lbl.length,nG=lbl[0].length,eMap=new Map();
-    function add(a,b,va,vb){if(a===b||!a||!b)return;const k=a<b?`${a}_${b}`:`${b}_${a}`;
-      if(!eMap.has(k))eMap.set(k,{a:a<b?a:b,b:a<b?b:a,sv:0,nv:0,cnt:0});
-      const e=eMap.get(k);if(a<b){e.sv+=va;e.nv+=vb;}else{e.sv+=vb;e.nv+=va;}e.cnt++;}
-    for(let x=0;x<nR;x++)for(let y=0;y<nG;y++){
-      const lab=lbl[x][y];if(!lab)continue;const vel=data[x][y];
-      let xc=x-1;if(xc===-1&&wrap)xc=nR-1;
-      if(xc>=0){let nb=lbl[xc][y];if(!nb)for(let k=0;k<gapX&&!nb;k++){xc--;if(xc<0){if(wrap)xc=nR-1;else break;}nb=lbl[xc][y];}if(nb)add(lab,nb,vel,data[xc][y]);}
-      xc=x+1;if(xc===nR&&wrap)xc=0;
-      if(xc<nR){let nb=lbl[xc][y];if(!nb)for(let k=0;k<gapX&&!nb;k++){xc++;if(xc>=nR){if(wrap)xc=0;else break;}nb=lbl[xc][y];}if(nb)add(lab,nb,vel,data[xc][y]);}
-      let yc=y-1;
-      if(yc>=0){let nb=lbl[x][yc];if(!nb)for(let k=0;k<gapY&&!nb;k++){yc--;if(yc<0)break;nb=lbl[x][yc];}if(nb)add(lab,nb,vel,data[x][yc]);}
-      yc=y+1;
-      if(yc<nG){let nb=lbl[x][yc];if(!nb)for(let k=0;k<gapY&&!nb;k++){yc++;if(yc>=nG)break;nb=lbl[x][yc];}if(nb)add(lab,nb,vel,data[x][yc]);}
-    }
-    return[...eMap.values()];
-  }
-
-  const sdata=c2(velocities),scorr=c2(velocities);
-  const ni=2*nyquist_vel,limits=find_limits(nyquist_vel,splits,sdata);
-  const[labels,nf]=find_regions(sdata,limits);
-  if(nf<2)return scorr;
-
-  const rsizes=new Int32Array(nf+1);
-  for(const row of labels)for(const v of row)if(v>0)rsizes[v]++;
-
-  const edges=get_edges(labels,sdata);
-  if(!edges.length)return scorr;
-
-  const unwrap=new Int32Array(nf+1);
-  const par=Array.from({length:nf+1},(_,i)=>i);
-  const sz=rsizes.slice();
-  function find(x){while(par[x]!==x){const p=par[x];par[x]=par[p];x=p;}return x;}
-
-  edges.sort((a,b)=>b.cnt-a.cnt);
-  for(const{a,b,sv,nv,cnt} of edges){
-    const ra=find(a),rb=find(b);if(ra===rb)continue;
-    const diff=(sv-nv)/cnt,rdiff=Math.round(diff);
-    let base=ra,merge=rb,fold=rdiff;
-    if(sz[rb]>sz[ra]){base=rb;merge=ra;fold=-rdiff;}
-    if(fold!==0)for(let i=1;i<=nf;i++)if(find(i)===merge)unwrap[i]+=fold;
-    par[merge]=base;sz[base]+=sz[merge];
-  }
-
-  let tf=0,tg=0;
-  for(let i=1;i<=nf;i++){tf+=rsizes[i]*unwrap[i];tg+=rsizes[i];}
-  if(tg>0){const off=Math.round(tf/tg);if(off)for(let i=0;i<=nf;i++)unwrap[i]-=off;}
-
-  for(let r=0;r<labels.length;r++)for(let g=0;g<labels[0].length;g++){
-    const lab=labels[r][g];if(lab&&unwrap[lab])scorr[r][g]+=unwrap[lab]*ni;}
-  return scorr;
+  return res;
 }
 
-// ── Level-2 velocity renderer ─────────────────────────────────────────────
+
 function renderLevel2VelFlat(buf) {
   let data = new Uint8Array(buf);
   const sig = (data[0] << 8) | data[1];
