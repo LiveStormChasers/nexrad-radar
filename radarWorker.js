@@ -420,7 +420,7 @@ function renderCompactVelFlat(buf) {
 
   // Run AtticRadar's exact pyart region-based dealiasing
   let dealiased = vel2d;
-  if (nyq > 0.5) {
+  if (nyq >= 20) {
     try { dealiased = dealias(vel2d, nyq); } catch(e) { dealiased = vel2d; }
   }
 
