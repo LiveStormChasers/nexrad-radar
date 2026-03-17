@@ -139,6 +139,9 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   .spill{background:none;border:1px solid #2a3a4a;color:#8aaabb;font-size:12px;font-weight:600;padding:6px 14px;border-radius:9999px;cursor:pointer;transition:all .15s}
   .spill.active{background:#3b9afa;border-color:#3b9afa;color:#fff}
   .spill:not(.active):hover{border-color:#3b9afa;color:#c8daea}
+  .wpill{background:none;border:1px solid #2a3a4a;color:#8aaabb;font-size:12px;font-weight:600;padding:6px 14px;border-radius:9999px;cursor:pointer;transition:all .15s}
+  .wpill.active{background:#3b9afa;border-color:#3b9afa;color:#fff}
+  .wpill:not(.active):hover{border-color:#3b9afa;color:#c8daea}
   #sheetBackdrop{display:none;position:fixed;inset:0;z-index:940;background:rgba(0,0,0,.4)}
   .sc-chevron{transition:transform .2s}
 </style>
@@ -235,6 +238,7 @@ let map, mapReady = false, radarLayer = null;
 let curSite = null, curLat = 0, curLng = 0;
 let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
+let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
 
@@ -754,6 +758,9 @@ async function loadStation() {
     if (!lst.length) { setStatus('No data'); return; }
 
     frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact', failed: false }));
+    // Trim to window immediately
+    const maxF = maxFramesForWindow();
+    if (frames.length > maxF) frames.splice(0, frames.length - maxF);
     buildTicks(frames.length);
     setStatus('');
 
@@ -785,27 +792,32 @@ async function loadStation() {
     if (!shown) { setStatus('No data'); return; }
     if (gen !== loadGen) return;
 
-    // Step 2: Load remaining frames in background (all in parallel)
+    // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
-    Promise.all(remaining.map(async i => {
-      if (gen !== loadGen) return;
-      try {
-        await fetchAndProcess(i);
+    const CONCURRENCY = 8;
+    let rIdx = 0;
+    async function runWorkerSlot() {
+      while (rIdx < remaining.length) {
+        const i = remaining[rIdx++];
         if (gen !== loadGen) return;
-        if (frames[i].compactBuf) updateTickLoaded(i);
-        else { frames[i].failed = true; updateTickEmpty(i); }
-      } catch(e) {
-        frames[i].failed = true;
-        updateTickEmpty(i);
+        try {
+          await fetchAndProcess(i);
+          if (gen !== loadGen) return;
+          if (frames[i].compactBuf) updateTickLoaded(i);
+          else { frames[i].failed = true; updateTickEmpty(i); }
+        } catch(e) {
+          frames[i].failed = true; updateTickEmpty(i);
+        }
       }
-    })).then(() => {
+    }
+    Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
       if (gen !== loadGen) return;
       // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
     });
 
-    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
+    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
   } catch(e) {
     if (gen !== loadGen) return;
     console.error(e);
@@ -827,8 +839,8 @@ async function liveRefresh(gen) {
       for (const k of newKeys) {
         frames.push({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' });
       }
-      // Trim to last 24
-      if (frames.length > 24) frames.splice(0, frames.length - 24);
+      // Trim to window
+      if (frames.length > maxFramesForWindow()) frames.splice(0, frames.length - maxFramesForWindow());
       buildTicks(frames.length);
       // Restore active seg classes for loaded frames
       frames.forEach((f, i) => { if (f.compactBuf) updateTickLoaded(i); });
@@ -849,7 +861,7 @@ async function liveRefresh(gen) {
       }
     }
   } catch(e) { /* silent */ }
-  if (gen === loadGen) liveRefreshTimer = setTimeout(() => liveRefresh(gen), 60000);
+  if (gen === loadGen) liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
 }
 
 // ── Frame loading ─────────────────────────────────────────────────────────
@@ -857,19 +869,10 @@ async function fetchAndProcess(fi) {
   const f = frames[fi];
   const fileSite = f.key.match(/^([A-Z]{4})_/)?.[1] || curSite;
 
-  // Velocity: always fetch raw Level-2 directly (same as AtticRadar)
-  // Avoids CF worker complexity — renderLevel2VelFlat handles parsing + dealiasing
-  if (curProduct === 'VEL') {
-    const r2 = await fetch(`/radar/file/${fileSite}/${f.key}`);
-    if (!r2.ok) throw new Error(r2.status);
-    f.compactBuf = await r2.arrayBuffer();
-    f.msgType    = 'level2_vel';
-    f.maxRangeKm = 460;
-    return;
-  }
-
-  // Reflectivity / CC: use CF worker (fast compact format)
-  const pParam = curProduct === 'CC' ? '?p=cc' : '';
+  // All products go through the CF worker compact path
+  const pParam = curProduct === 'VEL' ? '?p=vel'
+               : curProduct === 'CC'  ? '?p=cc'
+               :                        '';
   try {
     const r = await fetch(`/radar/process/${fileSite}/${f.key}${pParam}`);
     if (r.status === 204) return;
@@ -878,13 +881,19 @@ async function fetchAndProcess(fi) {
     const h = new Uint8Array(buf, 0, 2);
     if (h[0] === 0x1f && h[1] === 0x8b) buf = await gunzip(buf);
     f.compactBuf = buf;
-    f.msgType    = curProduct === 'CC' ? 'compact_cc' : 'compact';
+    f.msgType    = curProduct === 'VEL' ? 'compact_vel'
+                 : curProduct === 'CC'  ? 'compact_cc'
+                 :                        'compact';
     f.maxRangeKm = new DataView(f.compactBuf).getFloat32(20, true);
   } catch(e) {
+    // CF worker failed — fall back to raw Level-2
+    await new Promise(res => setTimeout(res, 200));
     const r2 = await fetch(`/radar/file/${fileSite}/${f.key}`);
     if (!r2.ok) throw new Error(r2.status);
     f.compactBuf = await r2.arrayBuffer();
-    f.msgType    = curProduct === 'CC' ? 'level2_cc' : 'level2';
+    f.msgType    = curProduct === 'VEL' ? 'level2_vel'
+                 : curProduct === 'CC'  ? 'level2_cc'
+                 :                        'level2';
     f.maxRangeKm = 460;
   }
 }
@@ -974,7 +983,39 @@ function initSlider() {
     });
   });
 
+  // Window toggle
+  document.querySelectorAll('.wpill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const w = parseInt(btn.dataset.w);
+      if (w === curWindow) { closeSheet(); return; }
+      curWindow = w;
+      document.querySelectorAll('.wpill').forEach(b => b.classList.toggle('active', parseInt(b.dataset.w) === curWindow));
+      closeSheet();
+      applyWindowTrim();
+    });
+  });
+
   updateLegend();
+}
+
+// ── Window trim ─────────────────────────────────────────────────────────────
+// NOMADS files are ~7 min apart. Calculate how many frames fit in curWindow.
+function maxFramesForWindow() {
+  return curWindow === 150 ? 24 : Math.max(2, Math.round(curWindow / 7));
+}
+
+function applyWindowTrim() {
+  const maxF = maxFramesForWindow();
+  // Keep only the most recent maxF frames
+  if (frames.length > maxF) frames.splice(0, frames.length - maxF);
+  buildTicks(frames.length);
+  frames.forEach((f, i) => {
+    if (f.compactBuf) updateTickLoaded(i);
+    else if (f.failed) updateTickEmpty(i);
+  });
+  // Clamp frameIdx
+  frameIdx = Math.min(frameIdx, frames.length - 1);
+  if (frameIdx >= 0) setFrame(frameIdx, false);
 }
 
 function scrollToSite() {
@@ -1140,6 +1181,14 @@ function setStatus(msg) { document.getElementById('loadStatus').textContent = ms
         <button class="spill active" data-p="REF">Reflectivity</button>
         <button class="spill" data-p="VEL">Velocity</button>
         <button class="spill" data-p="CC">Corr. Coeff.</button>
+      </div>
+      <div class="sheet-divider" style="margin-top:16px"></div>
+      <div class="sheet-row"><span class="sheet-label">Loop Window</span></div>
+      <div class="sheet-pills">
+        <button class="wpill" data-w="15">15 min</button>
+        <button class="wpill" data-w="30">30 min</button>
+        <button class="wpill" data-w="60">1 hr</button>
+        <button class="wpill active" data-w="150">Max</button>
       </div>
     </div>
   </div>
