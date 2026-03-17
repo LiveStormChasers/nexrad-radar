@@ -624,40 +624,7 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
-  // Pyart region-based dealiasing
-  let nyquist = 0;
-  for (let i = 0; i < NUM_AZ * numGates; i++) {
-    const v = radialData[i];
-    if (v > -900 && Math.abs(v) > nyquist) nyquist = Math.abs(v);
-  }
-  if (nyquist > 0.5) {
-    const MASKED = -64.5;
-    const vel2d = [];
-    for (let r = 0; r < NUM_AZ; r++) {
-      const row = [];
-      for (let g = 0; g < numGates; g++) {
-        const v = radialData[r * numGates + g];
-        row.push(v <= -900 ? MASKED : v);
-      }
-      vel2d.push(row);
-    }
-    const dealiased = dealias(vel2d, nyquist);
-    for (let r = 0; r < NUM_AZ; r++) {
-      for (let g = 0; g < numGates; g++) {
-        if (radialData[r * numGates + g] <= -900) continue;
-        radialData[r * numGates + g] = dealiased[r][g];
-      }
-    }
-  }
-
-  // REF quality mask
-  if (refData) {
-    const ratio = refNumGates / numGates;
-    for(let r=0;r<NUM_AZ;r++) for(let g=0;g<numGates;g++){
-      const rg=Math.min(Math.floor(g*ratio),refNumGates-1);
-      if(refData[r*refNumGates+rg]<REF_MASK_DBZ) radialData[r*numGates+g]=-999;
-    }
-  }
+  // Raw velocity — no dealiasing, no REF mask (matches AtticRadar default)
 
   const rgba = new Uint8Array(NUM_AZ * numGates * 4);
   for (let r = 0; r < NUM_AZ; r++) {
