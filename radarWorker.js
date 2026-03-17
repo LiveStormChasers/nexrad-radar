@@ -571,6 +571,17 @@ function renderLevel2VelFlat(buf) {
       if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs;velWordSize=wordSize; }
       if (b1===82&&b2===69&&b3===70) { refPtr=ptr;refNG=ng;refScl=scl;refOfs=ofs; }
     }
+    if (!self._velDbg2) {
+      self._velDbg2 = true;
+      console.log('[VD] nBlocks='+nBlocks+' velPtr='+velPtr+' elevIdx='+elevIdx+' base='+base+' chunkLen='+chunk.length);
+      for(let b=0;b<Math.min(nBlocks,10);b++){
+        const ptr2=dv2.getUint32(32+b*4,false);
+        const bb2=chunk.byteOffset+base+ptr2;
+        if(bb2+4<=chunk.byteOffset+chunk.length){
+          console.log('[VD] block '+b+': ptr='+ptr2+' t0='+chunk[bb2]+' name='+chunk[bb2+1]+','+chunk[bb2+2]+','+chunk[bb2+3]);
+        }
+      }
+    }
     if (velPtr < 0) return;
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
