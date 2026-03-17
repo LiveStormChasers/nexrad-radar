@@ -534,13 +534,12 @@ function renderLevel2VelFlat(buf) {
       const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
       const msgType = chunk[mpos+15];
       const msgBytes = 12 + segsHW * 2;
-      if (msgType === 31) { self._msg31count=(self._msg31count||0)+1; parseMsg31vel(chunk, mpos + 28); }
+      if (msgType === 31) parseMsg31vel(chunk, mpos + 28);
       mpos += Math.max(msgBytes, 28);
     }
   }
 
   function parseMsg31vel(chunk, base) {
-    self._parseCallCount=(self._parseCallCount||0)+1;
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
@@ -572,18 +571,6 @@ function renderLevel2VelFlat(buf) {
       if (b1===86&&b2===69&&b3===76) { velPtr=ptr;velNG=ng;velScl=scl;velOfs=ofs;velFG=fg;velGS=gs;velWordSize=wordSize; }
       if (b1===82&&b2===69&&b3===70) { refPtr=ptr;refNG=ng;refScl=scl;refOfs=ofs; }
     }
-    if (!self._velDbg2) {
-      self._velDbg2 = true;
-      let blockInfo = 'nBlocks='+nBlocks;
-      for(let b=0;b<Math.min(nBlocks,8);b++){
-        const ptr2=dv2.getUint32(32+b*4,false);
-        const bb2=chunk.byteOffset+base+ptr2;
-        if(bb2+4<=chunk.byteOffset+chunk.length){
-          blockInfo += ' b'+b+'=t'+chunk[bb2]+'n'+String.fromCharCode(chunk[bb2+1],chunk[bb2+2],chunk[bb2+3]);
-        }
-      }
-      self._firstBlockInfo = blockInfo;
-    }
     if (velPtr < 0) return;
     if (!elevData[elevIdx]) {
       const az0 = new Float32Array(NUM_AZ);
@@ -605,12 +592,6 @@ function renderLevel2VelFlat(buf) {
     ed.azAngles[azBin] = az;
     const velOff=base+velPtr+28;
     const vel2byte = (ed.velWordSize||velWordSize) === 16;
-    if (azBin === 0 && !self._velDebugLogged) {
-      self._velDebugLogged = true;
-      const rv0 = vel2byte ? ((chunk[chunk.byteOffset+velOff]<<8)|chunk[chunk.byteOffset+velOff+1]) : chunk[chunk.byteOffset+velOff];
-      const mps0 = rv0 <= 1 ? null : (rv0 - velOfs) / velScl;
-      console.log('[VEL DEBUG] wordSize='+velWordSize+' scl='+velScl.toFixed(3)+' ofs='+velOfs.toFixed(1)+' vel2byte='+vel2byte+' rv0='+rv0+' mps0='+(mps0?mps0.toFixed(1):'null'));
-    }
     for(let g=0;g<velNG&&g<ed.numGates;g++){
       const off = velOff + g*(vel2byte?2:1);
       if(off+1>chunk.length)break;
@@ -630,9 +611,7 @@ function renderLevel2VelFlat(buf) {
   }
 
   const allElevs = Object.values(elevData);
-  if (!allElevs.length) {
-    throw new Error('NO_VEL msg31=' + (self._msg31count||0) + ' parseCalls=' + (self._parseCallCount||0) + ' firstBlock=[' + (self._firstBlockInfo||'none') + ']');
-  }
+  if (!allElevs.length) return null; // no VEL moment in this file
   const candidates = allElevs.filter(ed => ed.populated >= 180);
   const best = (candidates.length ? candidates : allElevs)
     .reduce((b, e) => e.populated > b.populated ? e : b);
@@ -780,6 +759,8 @@ self.onmessage = function(e) {
     else if (type === 'level2_vel')                             flat = renderLevel2VelFlat(buffer);
     else if (type === 'level2_cc')                              flat = renderLevel2CCFlat(buffer);
     else { self.postMessage({ id, error: 'Unknown type: ' + type }); return; }
+
+    if (!flat) { self.postMessage({ id, rendered: null }); return; }
 
     const transfers = [flat.rgba.buffer];
     let coords = null;

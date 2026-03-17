@@ -485,8 +485,7 @@ void main() {
 function initWorker() {
   worker = new Worker('radarWorker.js');
   worker.onmessage = e => {
-    const { id, rendered, coords, error, debug } = e.data;
-    if (debug) { console.log('[WORKER DEBUG]', debug); return; }
+    const { id, rendered, coords, error } = e.data;
     const p = workerQ[id];
     if (!p) return;
     delete workerQ[id];
@@ -921,6 +920,8 @@ async function redrawCurrentFrame() {
     console.error('Worker error:', err);
     return;
   }
+
+  if (!result || !result.rgba) return; // no data for this moment (e.g. no VEL in file)
 
   if (result.coords) {
     coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
