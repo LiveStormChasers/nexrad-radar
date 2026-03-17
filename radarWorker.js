@@ -574,14 +574,15 @@ function renderLevel2VelFlat(buf) {
     }
     if (!self._velDbg2) {
       self._velDbg2 = true;
-      console.log('[VD] nBlocks='+nBlocks+' velPtr='+velPtr+' elevIdx='+elevIdx+' base='+base+' chunkLen='+chunk.length);
-      for(let b=0;b<Math.min(nBlocks,10);b++){
+      let blockInfo = 'nBlocks='+nBlocks;
+      for(let b=0;b<Math.min(nBlocks,8);b++){
         const ptr2=dv2.getUint32(32+b*4,false);
         const bb2=chunk.byteOffset+base+ptr2;
         if(bb2+4<=chunk.byteOffset+chunk.length){
-          console.log('[VD] block '+b+': ptr='+ptr2+' t0='+chunk[bb2]+' name='+chunk[bb2+1]+','+chunk[bb2+2]+','+chunk[bb2+3]);
+          blockInfo += ' b'+b+'=t'+chunk[bb2]+'n'+String.fromCharCode(chunk[bb2+1],chunk[bb2+2],chunk[bb2+3]);
         }
       }
+      self._firstBlockInfo = blockInfo;
     }
     if (velPtr < 0) return;
     if (!elevData[elevIdx]) {
@@ -630,9 +631,7 @@ function renderLevel2VelFlat(buf) {
 
   const allElevs = Object.values(elevData);
   if (!allElevs.length) {
-    // Count msg31 hits and report back for debugging
-    self.postMessage({ id: -999, debug: 'NO_VEL elevData empty. msg31count=' + self._msg31count + ' parseCallCount=' + self._parseCallCount });
-    throw new Error('No VEL data found in any elevation');
+    throw new Error('NO_VEL msg31=' + (self._msg31count||0) + ' parseCalls=' + (self._parseCallCount||0) + ' firstBlock=[' + (self._firstBlockInfo||'none') + ']');
   }
   const candidates = allElevs.filter(ed => ed.populated >= 180);
   const best = (candidates.length ? candidates : allElevs)
