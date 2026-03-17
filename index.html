@@ -485,7 +485,8 @@ void main() {
 function initWorker() {
   worker = new Worker('radarWorker.js');
   worker.onmessage = e => {
-    const { id, rendered, coords, error } = e.data;
+    const { id, rendered, coords, error, debug } = e.data;
+    if (debug) { console.log('[WORKER DEBUG]', debug); return; }
     const p = workerQ[id];
     if (!p) return;
     delete workerQ[id];

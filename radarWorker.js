@@ -534,12 +534,13 @@ function renderLevel2VelFlat(buf) {
       const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
       const msgType = chunk[mpos+15];
       const msgBytes = 12 + segsHW * 2;
-      if (msgType === 31) parseMsg31vel(chunk, mpos + 28);
+      if (msgType === 31) { self._msg31count=(self._msg31count||0)+1; parseMsg31vel(chunk, mpos + 28); }
       mpos += Math.max(msgBytes, 28);
     }
   }
 
   function parseMsg31vel(chunk, base) {
+    self._parseCallCount=(self._parseCallCount||0)+1;
     if (base + 68 > chunk.length) return;
     const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
     const elevIdx = dv2.getUint8(22);
@@ -628,7 +629,11 @@ function renderLevel2VelFlat(buf) {
   }
 
   const allElevs = Object.values(elevData);
-  if (!allElevs.length) throw new Error('No VEL data found in any elevation');
+  if (!allElevs.length) {
+    // Count msg31 hits and report back for debugging
+    self.postMessage({ id: -999, debug: 'NO_VEL elevData empty. msg31count=' + self._msg31count + ' parseCallCount=' + self._parseCallCount });
+    throw new Error('No VEL data found in any elevation');
+  }
   const candidates = allElevs.filter(ed => ed.populated >= 180);
   const best = (candidates.length ? candidates : allElevs)
     .reduce((b, e) => e.populated > b.populated ? e : b);
