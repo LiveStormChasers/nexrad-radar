@@ -305,8 +305,8 @@ function parseLevel2(rawBuf, product = 'ref') {
     const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (!allCuts.length) return null;
     const best = candidates.length
-      ? candidates.reduce((b, e) => e.numGates > b.numGates ? e : b)
-      : allCuts.reduce((b, e) => e.numGates > b.numGates ? e : b);
+      ? candidates.reduce((b, e) => e.numGates < b.numGates ? e : b)
+      : allCuts.reduce((b, e) => e.numGates < b.numGates ? e : b);
     if (!best) return null;
 
     numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
