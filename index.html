@@ -1096,7 +1096,24 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    bar.style.background = 'linear-gradient(to right,rgb(255,204,230) 0%,rgb(252,0,130) 14%,rgb(22,13,156) 22%,rgb(30,111,188) 29%,rgb(40,204,220) 35%,rgb(2,241,3) 43%,rgb(0,100,0) 53%,rgb(116,131,112) 57%,rgb(109,0,0) 62%,rgb(242,0,7) 75%,rgb(255,232,172) 83%,rgb(253,149,83) 90%,rgb(0,0,0) 100%)';
+    // AtticRadar velocity color table, knot values mapped to % of -140→+140 kts range
+    bar.style.background = 'linear-gradient(to right,' +
+      'rgb(255,204,230) 0%,' +    // -140 kts
+      'rgb(109,2,150) 14%,' +     // -120 kts
+      'rgb(22,13,156) 21%,' +     // -100 kts
+      'rgb(30,111,188) 25%,' +    // -90 kts
+      'rgb(40,204,220) 29%,' +    // -80 kts
+      'rgb(181,237,239) 32%,' +   // -70 kts
+      'rgb(2,241,3) 36%,' +       // -50 kts
+      'rgb(0,100,0) 43%,' +       // -40 kts
+      'rgb(116,131,112) 50%,' +   // -10 kts
+      'rgb(130,51,59) 50%,' +     // 0 kts (hard transition)
+      'rgb(242,0,7) 54%,' +       // +10 kts
+      'rgb(255,149,207) 64%,' +   // +40 kts
+      'rgb(255,232,172) 70%,' +   // +55 kts
+      'rgb(253,149,83) 71%,' +    // +60 kts
+      'rgb(110,14,9) 79%,' +      // +80 kts
+      'rgb(0,0,0) 100%)';         // +140 kts
     labels.innerHTML = '<span>−64</span><span>−32</span><span>−10</span><span>0</span><span>+10</span><span>+32</span><span>+64 m/s</span>';
   } else if (curProduct === 'CC') {
     bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
