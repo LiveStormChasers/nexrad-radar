@@ -238,6 +238,7 @@ let map, mapReady = false, radarLayer = null;
 let curSite = null, curLat = 0, curLng = 0;
 let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
+let allFrames = []; // full 24-frame list — never trimmed, source of truth
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -746,7 +747,7 @@ async function loadStation() {
   const gen = ++loadGen;
   clearTimeout(liveRefreshTimer);
   setStatus('Loading…');
-  frames = []; frameIdx = 0;
+  frames = []; frameIdx = 0; allFrames = [];
   buildTicks(0);
   document.getElementById('liveTag').style.display = 'none';
   if (radarLayer) radarLayer.clear();
@@ -757,10 +758,9 @@ async function loadStation() {
     if (gen !== loadGen) return;
     if (!lst.length) { setStatus('No data'); return; }
 
-    frames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact', failed: false }));
-    // Trim to window immediately
-    const maxF = maxFramesForWindow();
-    if (frames.length > maxF) frames.splice(0, frames.length - maxF);
+    allFrames = lst.map(k => ({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact', failed: false }));
+    // frames is a windowed view into allFrames
+    frames = allFrames.slice(-maxFramesForWindow());
     buildTicks(frames.length);
     setStatus('');
 
@@ -831,18 +831,20 @@ async function liveRefresh(gen) {
     const r   = await fetch(`/radar/list/${curSite}`);
     const lst = await r.json();
     if (gen !== loadGen) return;
-    // Find any filenames not already in frames
-    const existing = new Set(frames.map(f => f.key));
+    // Find any filenames not already in allFrames
+    const existing = new Set(allFrames.map(f => f.key));
     const newKeys  = lst.filter(k => !existing.has(k));
     if (newKeys.length) {
-      // Append new frames and load them
+      // Append new frames to master list
       for (const k of newKeys) {
-        frames.push({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' });
+        allFrames.push({ key: k, label: keyToLabel(k), compactBuf: null, msgType: 'compact' });
       }
-      // Trim to window
-      if (frames.length > maxFramesForWindow()) frames.splice(0, frames.length - maxFramesForWindow());
+      // Keep master list at most 24
+      if (allFrames.length > 24) allFrames.splice(0, allFrames.length - 24);
+      // Re-derive windowed view
+      frames = allFrames.slice(-maxFramesForWindow());
       buildTicks(frames.length);
-      // Restore active seg classes for loaded frames
+      // Restore loaded ticks
       frames.forEach((f, i) => { if (f.compactBuf) updateTickLoaded(i); });
       // Load new frames
       await Promise.all(
@@ -1005,17 +1007,17 @@ function maxFramesForWindow() {
 }
 
 function applyWindowTrim() {
-  const maxF = maxFramesForWindow();
-  // Keep only the most recent maxF frames
-  if (frames.length > maxF) frames.splice(0, frames.length - maxF);
+  // Re-derive frames window from the master list — never destructive
+  frames = allFrames.slice(-maxFramesForWindow());
   buildTicks(frames.length);
   frames.forEach((f, i) => {
     if (f.compactBuf) updateTickLoaded(i);
     else if (f.failed) updateTickEmpty(i);
   });
-  // Clamp frameIdx
+  // Clamp and redraw
   frameIdx = Math.min(frameIdx, frames.length - 1);
-  if (frameIdx >= 0) setFrame(frameIdx, false);
+  const best = frames.reduce((b, f, i) => f.compactBuf ? i : b, -1);
+  if (best >= 0) setFrame(best, true);
 }
 
 function scrollToSite() {
