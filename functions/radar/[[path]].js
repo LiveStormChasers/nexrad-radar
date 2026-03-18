@@ -375,33 +375,36 @@ function encodeCompact(parsed) {
 
   const gateStart = headerSize + azSize;
 
+  // Copy gate data row by row, capped at copyGates — remaining gates stay 0 (no data)
   if (product === 'vel') {
-    // Velocity: val = clamp(round(mps/0.5)+129, 2, 254)
-    // decode: mps = (val-129)*0.5
-    for (let i = 0; i < NUM_AZ * numGates; i++) {
-      const mps = radialData[i];
-      if (mps < -900) { u8[gateStart+i]=0; continue; }
-      let idx = Math.round(mps/0.5)+129;
-      if (idx<2) idx=2; if (idx>254) idx=254;
-      u8[gateStart+i]=idx;
+    for (let r = 0; r < NUM_AZ; r++) {
+      for (let g = 0; g < copyGates; g++) {
+        const mps = radialData[r * numGates + g];
+        if (mps < -900) continue;
+        let idx = Math.round(mps/0.5)+129;
+        if (idx<2) idx=2; if (idx>254) idx=254;
+        u8[gateStart + r * OUT_GATES + g] = idx;
+      }
     }
   } else if (product === 'cc') {
-    // CC: val=0 → no data, val 2-254 → cc=(val-2)/240.0  (covers 0.0–1.05)
-    for (let i = 0; i < NUM_AZ * numGates; i++) {
-      const cc = radialData[i];
-      if (cc < -900 || cc < 0) { u8[gateStart+i]=0; continue; }
-      let idx = Math.round(cc*240)+2;
-      if (idx<2) idx=2; if (idx>254) idx=254;
-      u8[gateStart+i]=idx;
+    for (let r = 0; r < NUM_AZ; r++) {
+      for (let g = 0; g < copyGates; g++) {
+        const cc = radialData[r * numGates + g];
+        if (cc < -900 || cc < 0) continue;
+        let idx = Math.round(cc*240)+2;
+        if (idx<2) idx=2; if (idx>254) idx=254;
+        u8[gateStart + r * OUT_GATES + g] = idx;
+      }
     }
   } else {
-    // Reflectivity: val=0 → no data, val 1-254 → dbz=(val-1)/2-32
-    for (let i = 0; i < NUM_AZ * numGates; i++) {
-      const dbz = radialData[i];
-      if (dbz < -32) { u8[gateStart+i]=0; continue; }
-      let idx = Math.round((dbz+32)*2);
-      if (idx<0) idx=0; if (idx>253) idx=253;
-      u8[gateStart+i]=idx+1;
+    for (let r = 0; r < NUM_AZ; r++) {
+      for (let g = 0; g < copyGates; g++) {
+        const dbz = radialData[r * numGates + g];
+        if (dbz < -32) continue;
+        let idx = Math.round((dbz+32)*2);
+        if (idx<0) idx=0; if (idx>253) idx=253;
+        u8[gateStart + r * OUT_GATES + g] = idx+1;
+      }
     }
   }
   return u8;
@@ -470,7 +473,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v16-${product}/${rest}`;
+      const cacheId = `v17-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
