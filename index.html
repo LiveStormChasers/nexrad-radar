@@ -696,17 +696,15 @@ function addStationMarkers() {
 
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
     // Add normal + selected images to atlas
-    const { canvas: cn, w, h } = makePillCanvas(id, false, false);
-    const { canvas: cs }       = makePillCanvas(id, true,  false);
-    const { canvas: cd }       = makePillCanvas(id, false, true);
-    map.addImage(`pill-${id}`,      { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
-    map.addImage(`pill-${id}-sel`,  { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
-    map.addImage(`pill-${id}-down`, { width: w, height: h, data: cd.getContext('2d').getImageData(0, 0, w, h).data });
+    const { canvas: cn, w, h } = makePillCanvas(id, false);
+    const { canvas: cs }       = makePillCanvas(id, true);
+    map.addImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
+    map.addImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
 
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lng, lat] },
-      properties: { id, lat, lng, sel: false, down: false }
+      properties: { id, lat, lng, sel: false }
     });
   }
 
@@ -958,44 +956,66 @@ function keyToLabel(key) {
 
 // ── Radar rendering ────────────────────────────────────────────────────────
 async function redrawCurrentFrame() {
-  const f = frames[frameIdx];
+  const idx = frameIdx; // capture now — async ops below may change it
+  const f = frames[idx];
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
-  const msgType  = f.msgType || 'compact';
-  const cacheKey = `${curSite}-${msgType}`;
-
-  const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
-  if (needCoords) coordsPending[cacheKey] = true;
+  const msgType = f.msgType || 'compact';
 
   let result;
   try {
+    // Step 1: Decode RGBA — withCoords:false, we key cache by actual dimensions below
     result = await runWorker({
       buffer:     f.compactBuf,
       type:       msgType,
       radarLat:   curLat,
       radarLon:   curLng,
-      withCoords: needCoords
+      withCoords: false
     });
   } catch(err) {
     console.error('Worker error:', err);
     return;
   }
 
-  if (!result || !result.rgba) return; // no data for this moment (e.g. no VEL in file)
+  if (!result || !result.rgba) return;
+  if (frameIdx !== idx) return; // frame changed while decoding
 
-  if (result.coords) {
-    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
-    delete coordsPending[cacheKey];
+  // Step 2: Cache key includes actual dimensions — different nGates = different coords
+  const cacheKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
+
+  if (!coordsCache[cacheKey]) {
+    if (!coordsPending[cacheKey]) {
+      // This dimension combo not cached — request coords
+      coordsPending[cacheKey] = true;
+      try {
+        const cr = await runWorker({
+          type:        'coords',
+          radarLat:    curLat,
+          radarLon:    curLng,
+          nRays:       result.nRays,
+          nGates:      result.nGates,
+          firstRangeM: result.firstRangeM,
+          gateSizeM:   result.gateSizeM
+        });
+        if (cr?.coords) coordsCache[cacheKey] = cr.coords;
+      } finally {
+        delete coordsPending[cacheKey];
+      }
+    } else {
+      // Coords pending for this dimension — wait
+      await new Promise(res => {
+        const iv = setInterval(() => {
+          if (!coordsPending[cacheKey]) { clearInterval(iv); res(); }
+        }, 30);
+      });
+    }
   }
 
   const cached = coordsCache[cacheKey];
-  radarLayer.updateFrame(
-    result.rgba,
-    cached ? cached.lngs : null,
-    cached ? cached.lats : null,
-    result.nGates,
-    result.nRays
-  );
+  if (!cached) return;
+  if (frameIdx !== idx) return; // frame changed while waiting for coords
+
+  radarLayer.updateFrame(result.rgba, cached.lngs, cached.lats, result.nGates, result.nRays);
 }
 
 function clearRadar() {
@@ -1027,12 +1047,10 @@ function initSlider() {
       updateLegend();
       if (curSite) {
         frames.forEach(f => { f.compactBuf = null; f.msgType = 'compact'; });
-        // Only clear coords for the product we're switching TO — keep other product's
-        // coords in cache so switching back is instant instead of recomputing from scratch
-        const newMsgType = curProduct === 'VEL' ? 'compact_vel'
-                         : curProduct === 'CC'  ? 'compact_cc' : 'compact';
-        delete coordsCache[`${curSite}-${newMsgType}`];
-        delete coordsPending[`${curSite}-${newMsgType}`];
+        // Only clear coords for the new product — keep others so switching back is instant
+        const newType = curProduct === 'VEL' ? 'compact_vel' : curProduct === 'CC' ? 'compact_cc' : 'compact';
+        for (const k of Object.keys(coordsCache)) { if (k.includes(`${curSite}-${newType}`)) delete coordsCache[k]; }
+        for (const k of Object.keys(coordsPending)) { if (k.includes(`${curSite}-${newType}`)) delete coordsPending[k]; }
         if (radarLayer) radarLayer.clear();
         loadStation();
       }
@@ -1159,24 +1177,23 @@ function togglePlay() { playing ? stopPlay() : startPlay(); }
 
 function startPlay() {
   if (!frames.length) return;
-  const msgType = curProduct === 'VEL' ? 'compact_vel'
-                : curProduct === 'CC'  ? 'compact_cc' : 'compact';
-  const cKey = `${curSite}-${msgType}`;
-
-  // Wait for (1) all frames loaded AND (2) coords in cache — both needed to play clean
+  // Check frames loaded
   const notReady = frames.filter(f => !f.compactBuf && !f.failed);
-  const coordsReady = !!coordsCache[cKey];
-  if (notReady.length > 0 || !coordsReady) {
+  // Check coords exist for current frame's dimensions (any entry for this site+product)
+  const msgType = (curProduct === 'VEL' ? 'compact_vel' : curProduct === 'CC' ? 'compact_cc' : 'compact');
+  const hasCoords = Object.keys(coordsCache).some(k => k.startsWith(`${curSite}-${msgType}-`));
+
+  if (notReady.length > 0 || !hasCoords) {
     document.getElementById('iconPlay').style.display = 'none';
     document.getElementById('iconPause').style.display = 'none';
     const nTotal = frames.length;
     const iv = setInterval(() => {
       const still = frames.filter(f => !f.compactBuf && !f.failed);
-      const cReady = !!coordsCache[cKey];
+      const gotCoords = Object.keys(coordsCache).some(k => k.startsWith(`${curSite}-${msgType}-`));
       const nL = frames.filter(f=>f.compactBuf).length;
-      if (!cReady) setStatus('Building coords…');
+      if (!gotCoords) setStatus('Building coords…');
       else if (still.length > 0) setStatus('Buffering ' + nL + ' / ' + nTotal + '…');
-      if (still.length === 0 && cReady) {
+      if (still.length === 0 && gotCoords) {
         clearInterval(iv); setStatus(''); playing = true;
         document.getElementById('iconPlay').style.display  = 'none';
         document.getElementById('iconPause').style.display = '';
