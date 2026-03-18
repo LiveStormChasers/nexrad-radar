@@ -24,14 +24,14 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 .spacer{flex:1}
 #liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
-#loadStatus{font-size:11px;color:#c8e8f8;font-weight:600;letter-spacing:0.02em}
+#loadStatus{font-size:11px;color:#7aaabb;font-weight:500}
 
 /* ── Map (full screen) ── */
 #map{position:fixed;inset:0;background:#000}
 
 /* ── Legend ── */
 #legend{position:fixed;bottom:130px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
-#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(254,203,229) 0%,rgb(254,144,200) 2%,rgb(253,87,172) 4%,rgb(252,27,143) 6%,rgb(231,0,132) 8%,rgb(190,1,138) 10%,rgb(148,1,144) 12%,rgb(109,3,151) 14%,rgb(58,9,154) 16%,rgb(25,49,168) 18%,rgb(28,91,181) 20%,rgb(33,139,197) 22%,rgb(38,191,215) 24%,rgb(76,225,228) 27%,rgb(113,229,232) 29%,rgb(152,234,236) 31%,rgb(156,237,206) 33%,rgb(52,239,69) 35%,rgb(2,221,2) 37%,rgb(2,196,1) 39%,rgb(1,169,1) 41%,rgb(1,144,0) 43%,rgb(0,119,0) 45%,rgb(83,122,81) 47%,rgb(105,128,101) 49%,rgb(135,98,103) 51%,rgb(131,61,68) 53%,rgb(127,0,1) 55%,rgb(153,0,2) 57%,rgb(178,0,3) 59%,rgb(204,0,5) 61%,rgb(228,0,6) 63%,rgb(250,69,101) 65%,rgb(252,107,151) 67%,rgb(254,143,200) 69%,rgb(253,228,160) 71%,rgb(253,206,138) 73%,rgb(253,182,116) 75%,rgb(253,160,94) 77%,rgb(244,133,75) 80%,rgb(223,114,64) 82%,rgb(203,96,54) 84%,rgb(182,78,44) 86%,rgb(162,60,34) 88%,rgb(141,41,24) 90%,rgb(120,23,14) 92%,rgb(95,12,8) 94%,rgb(63,8,5) 96%,rgb(32,4,2) 98%,rgb(0,0,0) 100%) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
+#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
 #legend-labels{display:flex;justify-content:space-between;font-size:8px;color:#4a6a80;width:200px}
 
 /* ── Bottom wrap ── */
@@ -240,6 +240,7 @@ let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = [];
 let downStations = new Set();
+let selStationId = null;
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -608,16 +609,21 @@ async function fetchRadarStatus() {
     if (!r.ok) return;
     const d = await r.json();
     const now = Date.now();
+    const STALE_MS = 30 * 60 * 1000; // 30 min — data age is ground truth
     downStations.clear();
     for (const f of d.features) {
       const p   = f.properties;
       const ops = p.rda?.properties?.operabilityStatus ?? '';
       const last = p.latency?.levelTwoLastReceivedTime;
       const ageMs = last ? now - new Date(last).getTime() : Infinity;
+      // Truly offline: explicitly inoperable or off-line in the status field
       const offline = /inoperable|\boff-line\b|\boffline\b/i.test(ops);
-      const stale   = ageMs > 30 * 60 * 1000;
+      // Stale: no data in 30+ min regardless of what the API status field claims
+      // (KCLX example: reports "On-line" but hasn't sent data in 17 hours)
+      const stale = ageMs > STALE_MS;
       if (offline || stale) downStations.add(p.id);
     }
+    // Update via setData — zero updateImage() calls, no zoom flicker
     const src = map.getSource('stations');
     if (src) {
       const features = Object.entries(STATIONS).map(([id, [lat, lng]]) => ({
@@ -695,16 +701,18 @@ function addStationMarkers() {
   const features = [];
 
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
-    // Add normal + selected images to atlas
-    const { canvas: cn, w, h } = makePillCanvas(id, false);
-    const { canvas: cs }       = makePillCanvas(id, true);
-    map.addImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
-    map.addImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
+    // Pre-render all 3 variants — never call updateImage() which causes zoom flicker
+    const { canvas: cn, w, h } = makePillCanvas(id, false, false);
+    const { canvas: cs }       = makePillCanvas(id, true,  false);
+    const { canvas: cd }       = makePillCanvas(id, false, true);
+    map.addImage(`pill-${id}`,      { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
+    map.addImage(`pill-${id}-sel`,  { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
+    map.addImage(`pill-${id}-down`, { width: w, height: h, data: cd.getContext('2d').getImageData(0, 0, w, h).data });
 
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lng, lat] },
-      properties: { id, lat, lng, sel: false }
+      properties: { id, lat, lng, sel: false, down: false }
     });
   }
 
@@ -755,6 +763,7 @@ function setStationSelected(id) {
 async function selectStation(id, lat, lng) {
   selStationId = id;
   setStationSelected(id);
+  selStationId = id;
   curSite = id; curLat = lat; curLng = lng;
   document.getElementById('scName').textContent = id;
   document.getElementById('siteBtnLabel').textContent = id;
@@ -979,7 +988,7 @@ async function redrawCurrentFrame() {
     return;
   }
 
-  if (!result || !result.rgba) return;
+  if (!result || !result.rgba) return; // no data for this moment (e.g. no VEL in file)
 
   if (result.coords) {
     coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
@@ -1025,10 +1034,7 @@ function initSlider() {
       updateLegend();
       if (curSite) {
         frames.forEach(f => { f.compactBuf = null; f.msgType = 'compact'; });
-        // Only clear coords for the new product — keep others so switching back is instant
-        const newType = curProduct === 'VEL' ? 'compact_vel' : curProduct === 'CC' ? 'compact_cc' : 'compact';
-        for (const k of Object.keys(coordsCache)) { if (k.includes(`${curSite}-${newType}`)) delete coordsCache[k]; }
-        for (const k of Object.keys(coordsPending)) { if (k.includes(`${curSite}-${newType}`)) delete coordsPending[k]; }
+        for (const k of Object.keys(coordsCache)) delete coordsCache[k];
         if (radarLayer) radarLayer.clear();
         loadStation();
       }
@@ -1155,30 +1161,21 @@ function togglePlay() { playing ? stopPlay() : startPlay(); }
 
 function startPlay() {
   if (!frames.length) return;
-  // Check frames loaded
   const notReady = frames.filter(f => !f.compactBuf && !f.failed);
-  // Check coords exist for current frame's dimensions (any entry for this site+product)
-  const msgType = (curProduct === 'VEL' ? 'compact_vel' : curProduct === 'CC' ? 'compact_cc' : 'compact');
-  const hasCoords = Object.keys(coordsCache).some(k => k.startsWith(`${curSite}-${msgType}-`));
-
-  if (notReady.length > 0 || !hasCoords) {
+  if (notReady.length > 0) {
     document.getElementById('iconPlay').style.display = 'none';
     document.getElementById('iconPause').style.display = 'none';
-    const nTotal = frames.length;
+    setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
     const iv = setInterval(() => {
-      const still = frames.filter(f => !f.compactBuf && !f.failed);
-      const gotCoords = Object.keys(coordsCache).some(k => k.startsWith(`${curSite}-${msgType}-`));
-      const nL = frames.filter(f=>f.compactBuf).length;
-      if (!gotCoords) setStatus('Building coords…');
-      else if (still.length > 0) setStatus('Buffering ' + nL + ' / ' + nTotal + '…');
-      if (still.length === 0 && gotCoords) {
+      setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
+      if (frames.filter(f => !f.compactBuf && !f.failed).length === 0) {
         clearInterval(iv); setStatus(''); playing = true;
         document.getElementById('iconPlay').style.display  = 'none';
         document.getElementById('iconPause').style.display = '';
         if (frameIdx >= frames.length - 1) setFrame(0, true);
         scheduleNextFrame();
       }
-    }, 50);
+    }, 300);
     return;
   }
   playing = true;
@@ -1215,8 +1212,26 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    bar.style.background = 'linear-gradient(to right,rgb(254,203,229) 0%,rgb(254,144,200) 2%,rgb(253,87,172) 4%,rgb(252,27,143) 6%,rgb(231,0,132) 8%,rgb(190,1,138) 10%,rgb(148,1,144) 12%,rgb(109,3,151) 14%,rgb(58,9,154) 16%,rgb(25,49,168) 18%,rgb(28,91,181) 20%,rgb(33,139,197) 22%,rgb(38,191,215) 24%,rgb(76,225,228) 27%,rgb(113,229,232) 29%,rgb(152,234,236) 31%,rgb(156,237,206) 33%,rgb(52,239,69) 35%,rgb(2,221,2) 37%,rgb(2,196,1) 39%,rgb(1,169,1) 41%,rgb(1,144,0) 43%,rgb(0,119,0) 45%,rgb(83,122,81) 47%,rgb(105,128,101) 49%,rgb(135,98,103) 51%,rgb(131,61,68) 53%,rgb(127,0,1) 55%,rgb(153,0,2) 57%,rgb(178,0,3) 59%,rgb(204,0,5) 61%,rgb(228,0,6) 63%,rgb(250,69,101) 65%,rgb(252,107,151) 67%,rgb(254,143,200) 69%,rgb(253,228,160) 71%,rgb(253,206,138) 73%,rgb(253,182,116) 75%,rgb(253,160,94) 77%,rgb(244,133,75) 80%,rgb(223,114,64) 82%,rgb(203,96,54) 84%,rgb(182,78,44) 86%,rgb(162,60,34) 88%,rgb(141,41,24) 90%,rgb(120,23,14) 92%,rgb(95,12,8) 94%,rgb(63,8,5) 96%,rgb(32,4,2) 98%,rgb(0,0,0) 100%)';
-  labels.innerHTML = '<span>−140</span><span>−70</span><span>0</span><span>+70</span><span>+140 kt</span>';
+    bar.style.background = 'linear-gradient(to right,' +
+      'rgb(255,204,230) 0%,' +      // -140 kts → -120 solid
+      'rgb(255,204,230) 14.3%,' +   // -120 kts hard cut
+      'rgb(252,0,130) 14.3%,' +     // -120 kts start
+      'rgb(109,2,150) 28.6%,' +     // -100 kts
+      'rgb(110,3,151) 28.6%,' +     // -100 hard cut
+      'rgb(22,13,156) 35.7%,' +     // -90 kts
+      'rgb(24,39,165) 35.7%,' +     // -90 hard cut
+      'rgb(30,111,188) 42.9%,' +    // -80 kts
+      'rgb(30,111,188) 42.9%,' +    // -80 (continuous)
+      'rgb(40,204,220) 50%,' +      // -70 kts
+      'rgb(47,222,226) 50%,' +      // -70 hard cut
+      'rgb(181,237,239) 64.3%,' +   // -50 kts
+      'rgb(181,237,239) 64.3%,' +   // -50 (continuous)
+      'rgb(2,241,3) 71.4%,' +       // -40 kts
+      'rgb(3,234,2) 71.4%,' +       // -40 hard cut
+      'rgb(0,100,0) 92.9%,' +       // -10 kts
+      'rgb(78,121,76) 92.9%,' +     // -10 hard cut
+      'rgb(116,131,112) 100%)';     // 0 kts
+    labels.innerHTML = '<span>−140</span><span>−70</span><span>0</span><span>+70</span><span>+140 kt</span>';
   } else if (curProduct === 'CC') {
     bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
     labels.innerHTML = '<span>0.0</span><span>0.3</span><span>0.5</span><span>0.75</span><span>0.9</span><span>1.0</span>';
@@ -1229,7 +1244,7 @@ function updateLegend() {
 function setStatus(msg) {
   const el = document.getElementById('loadStatus');
   el.textContent = msg;
-  el.style.color = (msg.startsWith('Buffering') || msg.startsWith('Building')) ? '#ffb830' : '#c8e8f8';
+  el.style.color = msg.startsWith('Buffering') ? '#f0a500' : '#7aaabb';
 }
 </script>
 
