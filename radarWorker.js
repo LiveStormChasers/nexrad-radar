@@ -86,9 +86,11 @@ function parseCompact(buf) {
   const firstRangeM = dv.getFloat32(12, true);
   const gateSizeM   = dv.getFloat32(16, true);
   const maxRangeKm  = dv.getFloat32(20, true);
-  // v18+: nyquist at [24..27]; older files have 24-byte header (nyquist=0)
-  const nyquist     = data.length > 24 + numAz * 4 + numGates ? dv.getFloat32(24, true) : 0;
-  const gateOffset  = 28 + numAz * 4; // header is now 28 bytes
+  // Detect header size: v18+ has 28 bytes (nyquist at [24..27]), older = 24 bytes
+  // Total expected size with 28-byte header: 28 + numAz*4 + numAz*numGates
+  const has28 = data.length >= 28 + numAz * 4 + numAz * numGates;
+  const nyquist    = has28 ? dv.getFloat32(24, true) : 0;
+  const gateOffset = (has28 ? 28 : 24) + numAz * 4;
   return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset, nyquist };
 }
 
@@ -211,7 +213,7 @@ function computeCornerGrid(radarLat, radarLon, nRays, nGates, firstRangeM, gateS
 
 // ── Flat gate×ray RGBA from compact ──────────────────────────────────────
 function renderCompactFlat(buf) {
-  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset, nyquist } = parseCompact(buf);
   const rgba = new Uint8Array(numAz * numGates * 4);
   for (let r = 0; r < numAz; r++) {
     const src    = gateOffset + r * numGates;
