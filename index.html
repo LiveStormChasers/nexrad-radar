@@ -240,6 +240,7 @@ let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = [];
 let downStations = new Set();
+let selStationId = null;
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -727,7 +728,7 @@ function addStationMarkers() {
     layout: {
       'icon-image': ['case',
         ['get', 'sel'],  ['concat', 'pill-', ['get', 'id'], '-sel'],
-        ['get', 'down'], ['concat', 'pill-', ['get', 'id'], '-down'],
+        ['coalesce', ['get', 'down'], false], ['concat', 'pill-', ['get', 'id'], '-down'],
                          ['concat', 'pill-', ['get', 'id']]
       ],
       'icon-allow-overlap':   true,
