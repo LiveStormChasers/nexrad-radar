@@ -24,7 +24,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 .spacer{flex:1}
 #liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
-#loadStatus{font-size:11px;color:#7aaabb;font-weight:500;letter-spacing:0.01em}
+#loadStatus{font-size:11px;color:#7aaabb;font-weight:500}
 
 /* ── Map (full screen) ── */
 #map{position:fixed;inset:0;background:#000}
@@ -239,7 +239,7 @@ let curSite = null, curLat = 0, curLng = 0;
 let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = []; // full 24-frame list — never trimmed, source of truth
-let downStations = new Set(); // stations with stale/offline data from NWS API
+let downStations = new Set();
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -608,27 +608,28 @@ async function fetchRadarStatus() {
     if (!r.ok) return;
     const d = await r.json();
     const now = Date.now();
-    const STALE_MS = 15 * 60 * 1000; // 15 min
+    const STALE_MS = 15 * 60 * 1000;
     downStations.clear();
     for (const f of d.features) {
       const p   = f.properties;
       const id  = p.id;
       const ops = p.rda?.properties?.operabilityStatus ?? '';
       const last = p.latency?.levelTwoLastReceivedTime;
-      const stale   = last ? (now - new Date(last).getTime()) > STALE_MS : false;
-      const offline = /inoperable|maintenance|unavail|off-line|offline/i.test(ops);
-      if (stale || offline) downStations.add(id);
+      const ageMs = last ? now - new Date(last).getTime() : Infinity;
+      // Only flag truly offline radars — "Maintenance Action" radars still transmit fine
+      const offline = /inoperable|\boff-line\b|\boffline\b/i.test(ops);
+      const stale   = ageMs > STALE_MS && !ops.includes('On-line') && !ops.includes('Operate');
+      if (offline || stale) downStations.add(id);
     }
-    // Re-render all marker images to reflect new status
     for (const [id] of Object.entries(STATIONS)) {
       if (!map.hasImage(`pill-${id}`)) continue;
       const isDown = downStations.has(id);
       const { canvas: cn, w, h } = makePillCanvas(id, false, isDown);
       const { canvas: cs }       = makePillCanvas(id, true,  isDown);
-      map.updateImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
-      map.updateImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
+      map.updateImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0,0,w,h).data });
+      map.updateImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0,0,w,h).data });
     }
-  } catch(e) { /* best-effort */ }
+  } catch(e) {}
 }
 
 // ── Station GL sprite pills ────────────────────────────────────────────────
@@ -847,17 +848,15 @@ async function loadStation() {
         } catch(e) {
           frames[i].failed = true; updateTickEmpty(i);
         }
-        // Show live frame count while loading
         if (gen === loadGen) {
-          const nLoaded = frames.filter(f => f.compactBuf).length;
-          const nTotal  = frames.length;
-          if (nLoaded < nTotal) setStatus(nLoaded + ' / ' + nTotal + ' frames');
+          const nL = frames.filter(f=>f.compactBuf).length;
+          if (nL < frames.length) setStatus(nL + ' / ' + frames.length + ' frames');
         }
       }
     }
     Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
       if (gen !== loadGen) return;
-      setStatus(''); // all frames loaded
+      setStatus('');
       // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
@@ -925,7 +924,6 @@ async function fetchAndProcess(fi) {
     const r = await fetch(`/radar/process/${fileSite}/${f.key}${pParam}`);
     if (r.status === 204) return;
     if (!r.ok) throw new Error(r.status);
-    // Skip mid-scan files — CF worker sets x-complete: false when file is still being written
     if (r.headers.get('x-complete') === 'false') return;
     let buf = await r.arrayBuffer();
     const h = new Uint8Array(buf, 0, 2);
@@ -1153,26 +1151,20 @@ function togglePlay() { playing ? stopPlay() : startPlay(); }
 
 function startPlay() {
   if (!frames.length) return;
-  // Check if all frames are ready
   const notReady = frames.filter(f => !f.compactBuf && !f.failed);
   if (notReady.length > 0) {
-    // Not all loaded yet — show buffering state and wait
-    const btn = document.getElementById('iconPlay').parentElement;
-    const origHtml = btn.innerHTML;
     document.getElementById('iconPlay').style.display = 'none';
     document.getElementById('iconPause').style.display = 'none';
-    const loaded = frames.filter(f => f.compactBuf).length;
-    setStatus('Buffering ' + loaded + ' / ' + frames.length + '…');
-    const waitInterval = setInterval(() => {
-      const stillWaiting = frames.filter(f => !f.compactBuf && !f.failed);
-      const nowLoaded = frames.filter(f => f.compactBuf).length;
-      setStatus('Buffering ' + nowLoaded + ' / ' + frames.length + '…');
-      if (stillWaiting.length === 0) {
-        clearInterval(waitInterval);
+    setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
+    const iv = setInterval(() => {
+      const still = frames.filter(f => !f.compactBuf && !f.failed);
+      setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
+      if (still.length === 0) {
+        clearInterval(iv);
         setStatus('');
+        playing = true;
         document.getElementById('iconPlay').style.display  = 'none';
         document.getElementById('iconPause').style.display = '';
-        playing = true;
         if (frameIdx >= frames.length - 1) setFrame(0, true);
         scheduleNextFrame();
       }
@@ -1245,7 +1237,7 @@ function updateLegend() {
 function setStatus(msg) {
   const el = document.getElementById('loadStatus');
   el.textContent = msg;
-  el.style.color = msg.startsWith('Buffering') ? '#f0a500' : '#4a6a80';
+  el.style.color = msg.startsWith('Buffering') ? '#f0a500' : '#7aaabb';
 }
 </script>
 
