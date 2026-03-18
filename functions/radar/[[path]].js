@@ -317,7 +317,27 @@ function parseLevel2(rawBuf, product = 'ref') {
     radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
     for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-    // No server-side dealias
+    // Server-side azimuthal dealias (replaces client-side approach)
+    const nyq = best.nyquist;
+    if (nyq > 0) {
+      const twoNyq = 2 * nyq;
+      const ng = numGates;
+      for (let g = 0; g < ng; g++) {
+        const sv = [];
+        for (let r = 0; r < NUM_AZ && sv.length < 20; r++)
+          if (radialData[r * ng + g] > -900) sv.push(radialData[r * ng + g]);
+        if (!sv.length) continue;
+        sv.sort((a, b) => a - b);
+        let ref = sv[Math.floor(sv.length / 2)];
+        for (let r = 0; r < NUM_AZ; r++) {
+          const i = r * ng + g;
+          if (radialData[i] <= -900) continue;
+          const n = Math.round((ref - radialData[i]) / twoNyq);
+          radialData[i] += n * twoNyq;
+          ref = radialData[i];
+        }
+      }
+    }
   }
 
   if (!radialData) {
@@ -486,10 +506,15 @@ export async function onRequest(context) {
       const r = await fetch(`${NOMADS}/${rest}`);
       if (!r.ok) return new Response('NOMADS '+r.status, { status:r.status, headers:CORS });
       const rawBuf = await r.arrayBuffer();
+      // If NOMADS Content-Length doesn't match actual bytes, file is still uploading
+      const expectedLen = parseInt(r.headers.get('Content-Length') || '0');
+      const truncated = expectedLen > 0 && rawBuf.byteLength < expectedLen;
 
       // Parse
       const parsed = parseLevel2(rawBuf, product);
       if (!parsed) return new Response(null, { status:204, headers:CORS });
+      // Override isComplete if file was truncated mid-upload on NOMADS
+      if (truncated) parsed.isComplete = false;
 
       // Encode + compress
       const compact = encodeCompact(parsed);
