@@ -25,6 +25,10 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 #liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
 #loadStatus{font-size:10px;color:#4a6a80}
+#loadBar{position:fixed;bottom:0;left:0;right:0;height:2px;z-index:1000;pointer-events:none;overflow:hidden;display:none}
+#loadBarFill{height:100%;width:0%;background:linear-gradient(to right,#3b9afa,#60cfff);transition:width 0.3s ease;border-radius:0 1px 1px 0}
+#loadBarFill.indeterminate{width:40% !important;animation:loadSlide 1.2s ease-in-out infinite}
+@keyframes loadSlide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
 
 /* ── Map (full screen) ── */
 #map{position:fixed;inset:0;background:#000}
@@ -160,6 +164,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   <div id="liveTag">● LIVE</div>
 </div>
 
+<div id="loadBar"><div id="loadBarFill indeterminate"></div></div>
 <div id="map"></div>
 
 <div id="legend">
@@ -239,6 +244,7 @@ let curSite = null, curLat = 0, curLng = 0;
 let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = []; // full 24-frame list — never trimmed, source of truth
+let downStations = new Set(); // stations with stale/offline data
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -595,8 +601,39 @@ window.onload = () => {
     // ── Station pill markers (DOM-based Mapbox Markers — true geo-locked) ──
     addStationMarkers();
     initSlider();
+    fetchRadarStatus(); // check for down/stale radars
+    setInterval(fetchRadarStatus, 5 * 60 * 1000); // refresh every 5 min
   });
 };
+
+// ── Radar status (down detection via NWS API) ────
+async function fetchRadarStatus() {
+  try {
+    const r = await fetch('https://api.weather.gov/radar/stations?stationType=WSR-88D,TDWR');
+    const d = await r.json();
+    const now = Date.now();
+    const STALE_MS = 15 * 60 * 1000; // 15 min
+    downStations.clear();
+    for (const f of d.features) {
+      const p   = f.properties;
+      const id  = p.id;
+      const ops = p.rda?.properties?.operabilityStatus ?? '';
+      const last = p.latency?.levelTwoLastReceivedTime;
+      const stale = last ? (now - new Date(last).getTime()) > STALE_MS : false;
+      const offline = /inoperable|maintenance|unavail|off-line|offline/i.test(ops);
+      if (stale || offline) downStations.add(id);
+    }
+    // Re-render all marker images to reflect new status
+    for (const [id] of Object.entries(STATIONS)) {
+      if (!map.hasImage(`pill-${id}`)) continue;
+      const isDown = downStations.has(id);
+      const { canvas: cn, w, h } = makePillCanvas(id, false, isDown);
+      const { canvas: cs }       = makePillCanvas(id, true,  isDown);
+      map.updateImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
+      map.updateImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
+    }
+  } catch(e) { /* silently ignore — down detection is best-effort */ }
+}
 
 // ── Station GL sprite pills ────────────────────────────────────────────────
 // Draws each station label as a canvas pill, adds it to the map image atlas,
@@ -605,7 +642,7 @@ window.onload = () => {
 
 let selStationId = null;
 
-function makePillCanvas(id, selected) {
+function makePillCanvas(id, selected, down = false) {
   const dpr    = window.devicePixelRatio || 1;
   const font   = `bold ${10 * dpr}px "DIN Pro","Arial Narrow",Arial,sans-serif`;
   // Measure text
@@ -638,7 +675,7 @@ function makePillCanvas(id, selected) {
   ctx.fillStyle   = selected ? 'rgba(59,154,250,0.20)' : 'rgba(11,21,32,0.82)';
   ctx.fill();
   // Border
-  ctx.strokeStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.28)';
+  ctx.strokeStyle = down ? 'rgba(255,80,80,0.35)' : selected ? '#3b9afa' : 'rgba(59,154,250,0.28)';
   ctx.lineWidth   = selected ? 1.5 * dpr : 1 * dpr;
   ctx.stroke();
 
@@ -647,12 +684,12 @@ function makePillCanvas(id, selected) {
   const dotY = h / 2;
   ctx.beginPath();
   ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-  ctx.fillStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.45)';
+  ctx.fillStyle = down ? 'rgba(255,80,80,0.70)' : selected ? '#3b9afa' : 'rgba(59,154,250,0.45)';
   ctx.fill();
 
   // Text
   ctx.font         = font;
-  ctx.fillStyle    = selected ? '#ffffff' : '#7aaabb';
+  ctx.fillStyle    = down ? '#886666' : selected ? '#ffffff' : '#7aaabb';
   ctx.textBaseline = 'middle';
   ctx.fillText(id, dotX + dotR + gap, dotY);
 
@@ -664,8 +701,9 @@ function addStationMarkers() {
 
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
     // Add normal + selected images to atlas
-    const { canvas: cn, w, h } = makePillCanvas(id, false);
-    const { canvas: cs }       = makePillCanvas(id, true);
+    const isDown = downStations.has(id);
+    const { canvas: cn, w, h } = makePillCanvas(id, false, isDown);
+    const { canvas: cs }       = makePillCanvas(id, true,  isDown);
     map.addImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
     map.addImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
 
@@ -813,10 +851,14 @@ async function loadStation() {
         } catch(e) {
           frames[i].failed = true; updateTickEmpty(i);
         }
+        // Update progress bar
+        const loaded = frames.filter(f => f.compactBuf || f.failed).length;
+        setStatus('', loaded / frames.length);
       }
     }
     Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
       if (gen !== loadGen) return;
+      setStatus(''); // hide loading bar
       // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
@@ -1173,7 +1215,27 @@ function updateLegend() {
   }
 }
 
-function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
+function setStatus(msg, progress) {
+  document.getElementById('loadStatus').textContent = msg;
+  const bar  = document.getElementById('loadBar');
+  const fill = document.getElementById('loadBarFill');
+  if (!msg && progress === undefined) {
+    // Done — hide bar
+    bar.style.display = 'none';
+    fill.style.width = '0%';
+    fill.className = '';
+  } else if (progress !== undefined) {
+    // Determinate: show actual %
+    bar.style.display = 'block';
+    fill.className = '';
+    fill.style.width = Math.round(progress * 100) + '%';
+  } else {
+    // Indeterminate (initial "Loading…")
+    bar.style.display = 'block';
+    fill.className = 'indeterminate';
+    fill.style.width = '';
+  }
+}
 </script>
 
   <!-- Radar Settings Sheet (OpenSnow style) — outside bottomWrap so fixed positioning works -->
