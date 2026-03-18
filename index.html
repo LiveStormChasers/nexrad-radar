@@ -990,11 +990,18 @@ async function redrawCurrentFrame() {
   if (!result || !result.rgba) return;
 
   if (result.coords) {
-    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats, nGates: result.nGates };
     delete coordsPending[cacheKey];
   }
 
   const cached = coordsCache[cacheKey];
+  if (cached && cached.nGates !== result.nGates) {
+    // Gate count changed (e.g. 1832 vs 1192) — invalidate and re-fetch coords
+    delete coordsCache[cacheKey];
+    delete coordsPending[cacheKey];
+    redrawCurrentFrame();
+    return;
+  }
   radarLayer.updateFrame(
     result.rgba,
     cached ? cached.lngs : null,
