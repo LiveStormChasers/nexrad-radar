@@ -25,17 +25,13 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 #liveTag{font-size:9px;font-weight:800;color:var(--brand);background:#3b9afa18;border:1px solid #3b9afa40;border-radius:8px;padding:2px 7px;display:none;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
 #loadStatus{font-size:10px;color:#4a6a80}
-#loadBar{position:fixed;bottom:0;left:0;right:0;height:2px;z-index:1000;pointer-events:none;overflow:hidden;display:none}
-#loadBarFill{height:100%;width:0%;background:linear-gradient(to right,#3b9afa,#60cfff);transition:width 0.3s ease;border-radius:0 1px 1px 0}
-#loadBarFill.indeterminate{width:40% !important;animation:loadSlide 1.2s ease-in-out infinite}
-@keyframes loadSlide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
 
 /* ── Map (full screen) ── */
 #map{position:fixed;inset:0;background:#000}
 
 /* ── Legend ── */
 #legend{position:fixed;bottom:130px;left:12px;z-index:800;background:#0d1117cc;border:1px solid #ffffff12;border-radius:10px;padding:7px 11px;backdrop-filter:blur(8px);pointer-events:none}
-#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(54,78,130) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
+#legend-bar{width:200px;height:7px;border-radius:3px;margin-bottom:3px;background:linear-gradient(to right,rgb(254,203,229) 0%,rgb(254,144,200) 2%,rgb(253,87,172) 4%,rgb(252,27,143) 6%,rgb(231,0,132) 8%,rgb(190,1,138) 10%,rgb(148,1,144) 12%,rgb(109,3,151) 14%,rgb(58,9,154) 16%,rgb(25,49,168) 18%,rgb(28,91,181) 20%,rgb(33,139,197) 22%,rgb(38,191,215) 24%,rgb(76,225,228) 27%,rgb(113,229,232) 29%,rgb(152,234,236) 31%,rgb(156,237,206) 33%,rgb(52,239,69) 35%,rgb(2,221,2) 37%,rgb(2,196,1) 39%,rgb(1,169,1) 41%,rgb(1,144,0) 43%,rgb(0,119,0) 45%,rgb(83,122,81) 47%,rgb(105,128,101) 49%,rgb(135,98,103) 51%,rgb(131,61,68) 53%,rgb(127,0,1) 55%,rgb(153,0,2) 57%,rgb(178,0,3) 59%,rgb(204,0,5) 61%,rgb(228,0,6) 63%,rgb(250,69,101) 65%,rgb(252,107,151) 67%,rgb(254,143,200) 69%,rgb(253,228,160) 71%,rgb(253,206,138) 73%,rgb(253,182,116) 75%,rgb(253,160,94) 77%,rgb(244,133,75) 80%,rgb(223,114,64) 82%,rgb(203,96,54) 84%,rgb(182,78,44) 86%,rgb(162,60,34) 88%,rgb(141,41,24) 90%,rgb(120,23,14) 92%,rgb(95,12,8) 94%,rgb(63,8,5) 96%,rgb(32,4,2) 98%,rgb(0,0,0) 100%) 0%,rgb(57,85,134) 8%,rgb(76,125,156) 14%,rgb(60,173,110) 22%,rgb(21,125,30) 26%,rgb(203,222,1) 35%,rgb(252,253,0) 38%,rgb(250,148,0) 47%,rgb(249,35,11) 57%,rgb(202,153,180) 67%,rgb(154,36,224) 75%,rgb(132,253,255) 84%,rgb(161,101,73) 92%,rgb(115,10,1) 100%)}
 #legend-labels{display:flex;justify-content:space-between;font-size:8px;color:#4a6a80;width:200px}
 
 /* ── Bottom wrap ── */
@@ -164,7 +160,6 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   <div id="liveTag">● LIVE</div>
 </div>
 
-<div id="loadBar"><div id="loadBarFill indeterminate"></div></div>
 <div id="map"></div>
 
 <div id="legend">
@@ -244,7 +239,6 @@ let curSite = null, curLat = 0, curLng = 0;
 let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = []; // full 24-frame list — never trimmed, source of truth
-let downStations = new Set(); // stations with stale/offline data
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -601,39 +595,8 @@ window.onload = () => {
     // ── Station pill markers (DOM-based Mapbox Markers — true geo-locked) ──
     addStationMarkers();
     initSlider();
-    fetchRadarStatus(); // check for down/stale radars
-    setInterval(fetchRadarStatus, 5 * 60 * 1000); // refresh every 5 min
   });
 };
-
-// ── Radar status (down detection via NWS API) ────
-async function fetchRadarStatus() {
-  try {
-    const r = await fetch('https://api.weather.gov/radar/stations?stationType=WSR-88D,TDWR');
-    const d = await r.json();
-    const now = Date.now();
-    const STALE_MS = 15 * 60 * 1000; // 15 min
-    downStations.clear();
-    for (const f of d.features) {
-      const p   = f.properties;
-      const id  = p.id;
-      const ops = p.rda?.properties?.operabilityStatus ?? '';
-      const last = p.latency?.levelTwoLastReceivedTime;
-      const stale = last ? (now - new Date(last).getTime()) > STALE_MS : false;
-      const offline = /inoperable|maintenance|unavail|off-line|offline/i.test(ops);
-      if (stale || offline) downStations.add(id);
-    }
-    // Re-render all marker images to reflect new status
-    for (const [id] of Object.entries(STATIONS)) {
-      if (!map.hasImage(`pill-${id}`)) continue;
-      const isDown = downStations.has(id);
-      const { canvas: cn, w, h } = makePillCanvas(id, false, isDown);
-      const { canvas: cs }       = makePillCanvas(id, true,  isDown);
-      map.updateImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
-      map.updateImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
-    }
-  } catch(e) { /* silently ignore — down detection is best-effort */ }
-}
 
 // ── Station GL sprite pills ────────────────────────────────────────────────
 // Draws each station label as a canvas pill, adds it to the map image atlas,
@@ -642,7 +605,7 @@ async function fetchRadarStatus() {
 
 let selStationId = null;
 
-function makePillCanvas(id, selected, down = false) {
+function makePillCanvas(id, selected) {
   const dpr    = window.devicePixelRatio || 1;
   const font   = `bold ${10 * dpr}px "DIN Pro","Arial Narrow",Arial,sans-serif`;
   // Measure text
@@ -675,7 +638,7 @@ function makePillCanvas(id, selected, down = false) {
   ctx.fillStyle   = selected ? 'rgba(59,154,250,0.20)' : 'rgba(11,21,32,0.82)';
   ctx.fill();
   // Border
-  ctx.strokeStyle = down ? 'rgba(255,80,80,0.35)' : selected ? '#3b9afa' : 'rgba(59,154,250,0.28)';
+  ctx.strokeStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.28)';
   ctx.lineWidth   = selected ? 1.5 * dpr : 1 * dpr;
   ctx.stroke();
 
@@ -684,12 +647,12 @@ function makePillCanvas(id, selected, down = false) {
   const dotY = h / 2;
   ctx.beginPath();
   ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-  ctx.fillStyle = down ? 'rgba(255,80,80,0.70)' : selected ? '#3b9afa' : 'rgba(59,154,250,0.45)';
+  ctx.fillStyle = selected ? '#3b9afa' : 'rgba(59,154,250,0.45)';
   ctx.fill();
 
   // Text
   ctx.font         = font;
-  ctx.fillStyle    = down ? '#886666' : selected ? '#ffffff' : '#7aaabb';
+  ctx.fillStyle    = selected ? '#ffffff' : '#7aaabb';
   ctx.textBaseline = 'middle';
   ctx.fillText(id, dotX + dotR + gap, dotY);
 
@@ -701,9 +664,8 @@ function addStationMarkers() {
 
   for (const [id, [lat, lng]] of Object.entries(STATIONS)) {
     // Add normal + selected images to atlas
-    const isDown = downStations.has(id);
-    const { canvas: cn, w, h } = makePillCanvas(id, false, isDown);
-    const { canvas: cs }       = makePillCanvas(id, true,  isDown);
+    const { canvas: cn, w, h } = makePillCanvas(id, false);
+    const { canvas: cs }       = makePillCanvas(id, true);
     map.addImage(`pill-${id}`,     { width: w, height: h, data: cn.getContext('2d').getImageData(0, 0, w, h).data });
     map.addImage(`pill-${id}-sel`, { width: w, height: h, data: cs.getContext('2d').getImageData(0, 0, w, h).data });
 
@@ -851,14 +813,10 @@ async function loadStation() {
         } catch(e) {
           frames[i].failed = true; updateTickEmpty(i);
         }
-        // Update progress bar
-        const loaded = frames.filter(f => f.compactBuf || f.failed).length;
-        setStatus('', loaded / frames.length);
       }
     }
     Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
       if (gen !== loadGen) return;
-      setStatus(''); // hide loading bar
       // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
@@ -1186,25 +1144,7 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    bar.style.background = 'linear-gradient(to right,' +
-      'rgb(255,204,230) 0%,' +      // -140 kts → -120 solid
-      'rgb(255,204,230) 14.3%,' +   // -120 kts hard cut
-      'rgb(252,0,130) 14.3%,' +     // -120 kts start
-      'rgb(109,2,150) 28.6%,' +     // -100 kts
-      'rgb(110,3,151) 28.6%,' +     // -100 hard cut
-      'rgb(22,13,156) 35.7%,' +     // -90 kts
-      'rgb(24,39,165) 35.7%,' +     // -90 hard cut
-      'rgb(30,111,188) 42.9%,' +    // -80 kts
-      'rgb(30,111,188) 42.9%,' +    // -80 (continuous)
-      'rgb(40,204,220) 50%,' +      // -70 kts
-      'rgb(47,222,226) 50%,' +      // -70 hard cut
-      'rgb(181,237,239) 64.3%,' +   // -50 kts
-      'rgb(181,237,239) 64.3%,' +   // -50 (continuous)
-      'rgb(2,241,3) 71.4%,' +       // -40 kts
-      'rgb(3,234,2) 71.4%,' +       // -40 hard cut
-      'rgb(0,100,0) 92.9%,' +       // -10 kts
-      'rgb(78,121,76) 92.9%,' +     // -10 hard cut
-      'rgb(116,131,112) 100%)';     // 0 kts
+    bar.style.background = 'linear-gradient(to right,rgb(254,203,229) 0%,rgb(254,144,200) 2%,rgb(253,87,172) 4%,rgb(252,27,143) 6%,rgb(231,0,132) 8%,rgb(190,1,138) 10%,rgb(148,1,144) 12%,rgb(109,3,151) 14%,rgb(58,9,154) 16%,rgb(25,49,168) 18%,rgb(28,91,181) 20%,rgb(33,139,197) 22%,rgb(38,191,215) 24%,rgb(76,225,228) 27%,rgb(113,229,232) 29%,rgb(152,234,236) 31%,rgb(156,237,206) 33%,rgb(52,239,69) 35%,rgb(2,221,2) 37%,rgb(2,196,1) 39%,rgb(1,169,1) 41%,rgb(1,144,0) 43%,rgb(0,119,0) 45%,rgb(83,122,81) 47%,rgb(105,128,101) 49%,rgb(135,98,103) 51%,rgb(131,61,68) 53%,rgb(127,0,1) 55%,rgb(153,0,2) 57%,rgb(178,0,3) 59%,rgb(204,0,5) 61%,rgb(228,0,6) 63%,rgb(250,69,101) 65%,rgb(252,107,151) 67%,rgb(254,143,200) 69%,rgb(253,228,160) 71%,rgb(253,206,138) 73%,rgb(253,182,116) 75%,rgb(253,160,94) 77%,rgb(244,133,75) 80%,rgb(223,114,64) 82%,rgb(203,96,54) 84%,rgb(182,78,44) 86%,rgb(162,60,34) 88%,rgb(141,41,24) 90%,rgb(120,23,14) 92%,rgb(95,12,8) 94%,rgb(63,8,5) 96%,rgb(32,4,2) 98%,rgb(0,0,0) 100%)';     // 0 kts
     labels.innerHTML = '<span>−140</span><span>−70</span><span>0</span><span>+70</span><span>+140 kt</span>';
   } else if (curProduct === 'CC') {
     bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
@@ -1215,27 +1155,7 @@ function updateLegend() {
   }
 }
 
-function setStatus(msg, progress) {
-  document.getElementById('loadStatus').textContent = msg;
-  const bar  = document.getElementById('loadBar');
-  const fill = document.getElementById('loadBarFill');
-  if (!msg && progress === undefined) {
-    // Done — hide bar
-    bar.style.display = 'none';
-    fill.style.width = '0%';
-    fill.className = '';
-  } else if (progress !== undefined) {
-    // Determinate: show actual %
-    bar.style.display = 'block';
-    fill.className = '';
-    fill.style.width = Math.round(progress * 100) + '%';
-  } else {
-    // Indeterminate (initial "Loading…")
-    bar.style.display = 'block';
-    fill.className = 'indeterminate';
-    fill.style.width = '';
-  }
-}
+function setStatus(msg) { document.getElementById('loadStatus').textContent = msg; }
 </script>
 
   <!-- Radar Settings Sheet (OpenSnow style) — outside bottomWrap so fixed positioning works -->
