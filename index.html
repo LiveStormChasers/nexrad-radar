@@ -1181,17 +1181,15 @@ function startPlay() {
 function scheduleNextFrame() {
   if (!playing) return;
   const isLast = frameIdx >= frames.length - 1;
-  const delay  = isLast ? 1000 : 600; // OpenSnow: 600ms/frame, 1000ms hold on last
+  const delay  = isLast ? 750 : 50; // 750ms hold on last frame, 50ms between frames
   playTimer = setTimeout(() => {
     if (!playing) return;
-    requestAnimationFrame(() => {
     if (frameIdx >= frames.length - 1) {
       setFrame(0, true); // loop back to start
     } else {
       setFrame(frameIdx + 1);
     }
     scheduleNextFrame();
-    });
   }, delay);
 }
 
@@ -1207,26 +1205,8 @@ function updateLegend() {
   const bar    = document.getElementById('legend-bar');
   const labels = document.getElementById('legend-labels');
   if (curProduct === 'VEL') {
-    bar.style.background = 'linear-gradient(to right,' +
-      'rgb(255,204,230) 0%,' +      // -140 kts → -120 solid
-      'rgb(255,204,230) 14.3%,' +   // -120 kts hard cut
-      'rgb(252,0,130) 14.3%,' +     // -120 kts start
-      'rgb(109,2,150) 28.6%,' +     // -100 kts
-      'rgb(110,3,151) 28.6%,' +     // -100 hard cut
-      'rgb(22,13,156) 35.7%,' +     // -90 kts
-      'rgb(24,39,165) 35.7%,' +     // -90 hard cut
-      'rgb(30,111,188) 42.9%,' +    // -80 kts
-      'rgb(30,111,188) 42.9%,' +    // -80 (continuous)
-      'rgb(40,204,220) 50%,' +      // -70 kts
-      'rgb(47,222,226) 50%,' +      // -70 hard cut
-      'rgb(181,237,239) 64.3%,' +   // -50 kts
-      'rgb(181,237,239) 64.3%,' +   // -50 (continuous)
-      'rgb(2,241,3) 71.4%,' +       // -40 kts
-      'rgb(3,234,2) 71.4%,' +       // -40 hard cut
-      'rgb(0,100,0) 92.9%,' +       // -10 kts
-      'rgb(78,121,76) 92.9%,' +     // -10 hard cut
-      'rgb(116,131,112) 100%)';     // 0 kts
-    labels.innerHTML = '<span>−140</span><span>−70</span><span>0</span><span>+70</span><span>+140 kt</span>';
+    bar.style.background = 'linear-gradient(to right,rgb(255,204,230) 0.0%,rgb(255,204,230) 7.1%,rgb(252,0,130) 7.1%,rgb(109,2,150) 14.3%,rgb(110,3,151) 14.3%,rgb(22,13,156) 17.9%,rgb(24,39,165) 17.9%,rgb(30,111,188) 21.4%,rgb(30,111,188) 21.4%,rgb(40,204,220) 25.0%,rgb(47,222,226) 25.0%,rgb(181,237,239) 32.1%,rgb(181,237,239) 32.1%,rgb(2,241,3) 35.7%,rgb(3,234,2) 35.7%,rgb(0,100,0) 46.4%,rgb(78,121,76) 46.4%,rgb(116,131,112) 50.0%,rgb(137,117,122) 50.0%,rgb(130,51,59) 53.6%,rgb(109,0,0) 53.6%,rgb(242,0,7) 64.3%,rgb(249,51,76) 64.3%,rgb(255,149,207) 69.6%,rgb(253,160,201) 69.6%,rgb(255,232,172) 71.4%,rgb(253,228,160) 71.4%,rgb(253,149,83) 78.6%,rgb(254,142,80) 78.6%,rgb(110,14,9) 92.9%,rgb(110,14,9) 92.9%,rgb(0,0,0) 100.0%)';
+  labels.innerHTML = '<span>−60</span><span>−30</span><span>0</span><span>+30</span><span>+60 mph</span>';
   } else if (curProduct === 'CC') {
     bar.style.background = 'linear-gradient(to right,rgb(188,188,188),rgb(11,83,148),rgb(4,114,35),rgb(255,217,102),rgb(237,122,23),rgb(153,0,0),rgb(133,0,195))';
     labels.innerHTML = '<span>0.0</span><span>0.3</span><span>0.5</span><span>0.75</span><span>0.9</span><span>1.0</span>';
