@@ -404,7 +404,7 @@ function ccToRGBA(cc) {
 
 // ── Compact velocity renderer — with AtticRadar pyart region-based dealiasing ──
 function renderCompactVelFlat(buf) {
-  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset, nyquist } = parseCompact(buf);
 
   // Decode raw bytes to float m/s
   // Use nyquist from Level-2 header — this is the actual hardware Nyquist velocity,
