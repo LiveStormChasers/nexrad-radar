@@ -727,7 +727,7 @@ function addStationMarkers() {
     layout: {
       'icon-image': ['case',
         ['get', 'sel'],  ['concat', 'pill-', ['get', 'id'], '-sel'],
-        ['get', 'down'], ['concat', 'pill-', ['get', 'id'], '-down'],
+        ['coalesce',['get','down'],false], ['concat', 'pill-', ['get', 'id'], '-down'],
                          ['concat', 'pill-', ['get', 'id']]
       ],
       'icon-allow-overlap':   true,
