@@ -727,7 +727,7 @@ function addStationMarkers() {
     layout: {
       'icon-image': ['case',
         ['get', 'sel'],  ['concat', 'pill-', ['get', 'id'], '-sel'],
-        ['coalesce',['get','down'],false], ['concat', 'pill-', ['get', 'id'], '-down'],
+        ['get', 'down'], ['concat', 'pill-', ['get', 'id'], '-down'],
                          ['concat', 'pill-', ['get', 'id']]
       ],
       'icon-allow-overlap':   true,
@@ -968,6 +968,10 @@ async function redrawCurrentFrame() {
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
   const msgType  = f.msgType || 'compact';
+  const cacheKey = `${curSite}-${msgType}`;
+
+  const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
+  if (needCoords) coordsPending[cacheKey] = true;
 
   let result;
   try {
@@ -976,7 +980,7 @@ async function redrawCurrentFrame() {
       type:       msgType,
       radarLat:   curLat,
       radarLon:   curLng,
-      withCoords: true
+      withCoords: needCoords
     });
   } catch(err) {
     console.error('Worker error:', err);
@@ -985,15 +989,19 @@ async function redrawCurrentFrame() {
 
   if (!result || !result.rgba) return;
 
-  const dimKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
   if (result.coords) {
-    coordsCache[dimKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    delete coordsPending[cacheKey];
   }
 
-  const cached = coordsCache[dimKey];
-  if (!cached) return;
-
-  radarLayer.updateFrame(result.rgba, cached.lngs, cached.lats, result.nGates, result.nRays);
+  const cached = coordsCache[cacheKey];
+  radarLayer.updateFrame(
+    result.rgba,
+    cached ? cached.lngs : null,
+    cached ? cached.lats : null,
+    result.nGates,
+    result.nRays
+  );
 }
 
 function clearRadar() {
