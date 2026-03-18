@@ -75,6 +75,258 @@ for (let val = 2; val <= 255; val++) {
   }
 }
 
+
+// ── Compact binary parser ─────────────────────────────────────────────────
+function parseCompact(buf) {
+  const data = new Uint8Array(buf);
+  const dv   = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x52444152) throw new Error('Bad magic');
+  const numAz       = dv.getUint32(4,  true);
+  const numGates    = dv.getUint32(8,  true);
+  const firstRangeM = dv.getFloat32(12, true);
+  const gateSizeM   = dv.getFloat32(16, true);
+  const maxRangeKm  = dv.getFloat32(20, true);
+  const gateOffset  = 24 + numAz * 4;
+  return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset };
+}
+
+
+// ── Level-2 parser ────────────────────────────────────────────────────────
+function parseLevel2(raw) {
+  let data = new Uint8Array(raw);
+  const sig = (data[0] << 8) | data[1];
+  if (sig === 0x425A) {
+    try { data = Bzip2.decompress(data); } catch(e) {}
+  }
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let pos = 24;
+  const NUM_AZ = 720;
+  let radialData = null, numGates = 0, firstGateM = 0, gateSizeM = 0;
+
+  while (pos + 4 <= data.length) {
+    const recSizeRaw = dv.getInt32(pos, false);
+    pos += 4;
+    if (recSizeRaw === 0) break;
+    const recSize = Math.abs(recSizeRaw);
+    if (pos + recSize > data.length) break;
+    let chunk;
+    if (recSizeRaw < 0) {
+      chunk = data.slice(pos, pos + recSize);
+    } else {
+      try { chunk = Bzip2.decompress(data.slice(pos, pos + recSize)); }
+      catch(e) { pos += recSize; continue; }
+    }
+    pos += recSize;
+    let mpos = 0;
+    while (mpos + 28 <= chunk.length) {
+      const segsHW  = (chunk[mpos+12] << 8) | chunk[mpos+13];
+      const msgType = chunk[mpos+15];
+      const msgBytes = 12 + segsHW * 2;
+      if (msgType === 31) parseMsg31(chunk, mpos + 28);
+      mpos += Math.max(msgBytes, 28);
+    }
+  }
+
+  function parseMsg31(chunk, base) {
+    if (base + 68 > chunk.length) return;
+    const dv2 = new DataView(chunk.buffer, chunk.byteOffset + base);
+    if (dv2.getUint8(22) !== 1) return;
+    const az    = dv2.getFloat32(12, false);
+    const azBin = Math.floor(((az % 360 + 360) % 360) * 2) % NUM_AZ;
+    const nBlocks = dv2.getUint16(30, false);
+    for (let b = 0; b < nBlocks && b < 10; b++) {
+      if (base + 32 + (b+1)*4 > chunk.length) break;
+      const ptr   = dv2.getUint32(32 + b*4, false);
+      const bbase = chunk.byteOffset + base + ptr;
+      if (bbase + 28 > chunk.byteOffset + chunk.length) continue;
+      if (chunk[bbase] !== 68) continue;
+      if (chunk[bbase+1]!==82||chunk[bbase+2]!==69||chunk[bbase+3]!==70) continue;
+      const bdv = new DataView(chunk.buffer, bbase);
+      const ng  = bdv.getUint16(8,  false);
+      const fg  = bdv.getUint16(10, false);
+      const gs  = bdv.getUint16(12, false);
+      const scl = bdv.getFloat32(20, false);
+      const ofs = bdv.getFloat32(24, false);
+      if (!radialData) { numGates=ng; firstGateM=fg; gateSizeM=gs; radialData=new Float32Array(NUM_AZ*ng).fill(-999); }
+      const dataOff = base + ptr + 28;
+      for (let g = 0; g < ng; g++) {
+        if (dataOff + g >= chunk.length) break;
+        const rv = chunk[chunk.byteOffset + dataOff + g];
+        radialData[azBin*numGates+g] = rv<=1 ? -999 : (rv-ofs)/scl;
+      }
+      break;
+    }
+  }
+  return { radialData, numGates, firstGateM, gateSizeM, NUM_AZ };
+}
+
+
+// ── Great-circle corner grid ──────────────────────────────────────────────
+// Computes (nRays+1) × (nGates+1) corner positions.
+// Corner (r, g) = azimuth boundary r × range boundary g.
+// lngs[r*(nGates+1)+g], lats[r*(nGates+1)+g]
+function computeCornerGrid(radarLat, radarLon, nRays, nGates, firstRangeM, gateSizeM) {
+  const nCR = nRays + 1;
+  const nCG = nGates + 1;
+  const lngs = new Float32Array(nCR * nCG);
+  const lats  = new Float32Array(nCR * nCG);
+
+  const φ1    = radarLat  * (Math.PI / 180);
+  const λ1    = radarLon  * (Math.PI / 180);
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const R     = 6371008.8;
+
+  // Precompute per-gate boundary values (shared across all rays)
+  const cosD = new Float64Array(nCG);
+  const sinD = new Float64Array(nCG);
+  const a1   = new Float64Array(nCG); // sinφ1 * cosD
+  const a2   = new Float64Array(nCG); // cosφ1 * sinD
+  for (let g = 0; g < nCG; g++) {
+    const d = (firstRangeM + g * gateSizeM) / R;
+    cosD[g] = Math.cos(d);
+    sinD[g] = Math.sin(d);
+    a1[g]   = sinφ1 * cosD[g];
+    a2[g]   = cosφ1 * sinD[g];
+  }
+
+  for (let r = 0; r < nCR; r++) {
+    const bearing = (r / nRays) * (2 * Math.PI); // CW from North
+    const cosB   = Math.cos(bearing);
+    const sinB   = Math.sin(bearing);
+    const rowOff = r * nCG;
+    for (let g = 0; g < nCG; g++) {
+      const sinφ2 = a1[g] + a2[g] * cosB;
+      const φ2    = Math.asin(Math.max(-1, Math.min(1, sinφ2)));
+      const λ2    = λ1 + Math.atan2(sinB * sinD[g] * cosφ1, cosD[g] - sinφ1 * sinφ2);
+      lngs[rowOff + g] = λ2 * (180 / Math.PI);
+      lats[rowOff + g] = φ2 * (180 / Math.PI);
+    }
+  }
+  return { lngs, lats };
+}
+
+
+// ── Flat gate×ray RGBA from compact ──────────────────────────────────────
+function renderCompactFlat(buf) {
+  const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
+  const rgba = new Uint8Array(numAz * numGates * 4);
+  for (let r = 0; r < numAz; r++) {
+    const src    = gateOffset + r * numGates;
+    const dstRow = r * numGates * 4;
+    for (let g = 0; g < numGates; g++) {
+      const val = data[src + g];
+      if (!val) continue;
+      const s = val * 4;
+      const a = RGBA_PAL[s + 3];
+      if (!a) continue;
+      const pi = dstRow + g * 4;
+      rgba[pi]   = RGBA_PAL[s];
+      rgba[pi+1] = RGBA_PAL[s+1];
+      rgba[pi+2] = RGBA_PAL[s+2];
+      rgba[pi+3] = a;
+    }
+  }
+  return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
+}
+
+
+// ── Flat gate×ray RGBA from Level-2 ─────────────────────────────────────
+function renderLevel2Flat(buf) {
+  const parsed = parseLevel2(buf);
+  if (!parsed || !parsed.radialData) throw new Error('No REF data found');
+  const { radialData, numGates, firstGateM, gateSizeM, NUM_AZ } = parsed;
+  const rgba = new Uint8Array(NUM_AZ * numGates * 4);
+  for (let r = 0; r < NUM_AZ; r++) {
+    for (let g = 0; g < numGates; g++) {
+      const dbz = radialData[r * numGates + g];
+      if (dbz <= -900) continue;
+      const rgb = dbzToRGBA(dbz);
+      if (!rgb) continue;
+      const pi = (r * numGates + g) * 4;
+      rgba[pi]   = rgb[0];
+      rgba[pi+1] = rgb[1];
+      rgba[pi+2] = rgb[2];
+      rgba[pi+3] = 255;
+    }
+  }
+  const maxRangeM = firstGateM + numGates * gateSizeM;
+  return { rgba, nRays: NUM_AZ, nGates: numGates, firstRangeM: firstGateM, gateSizeM, maxRangeKm: maxRangeM / 1000 };
+}
+
+
+// ── AtticRadar velocity color LUT — exact chroma.js LAB, correct domain ──
+// Exact pipeline: colortable_parser → scaleValues (kts→m/s) → append RF=999
+// chroma.scale(colors).domain(values).mode('lab'), cmin=-72.022, cmax=999
+// val=0: transparent, val=1: RF purple, val 2-254: mps=(val-129)*0.5
+const VEL_LUT = new Uint8Array([
+  0,0,0,0, 139,0,218,255,
+  255,72,146,255,255,60,142,255,254,45,137,255,253,24,132,255,
+  249,0,131,255,242,0,132,255,236,0,133,255,229,0,134,255,
+  223,0,135,255,216,0,136,255,210,0,137,255,203,0,138,255,
+  197,0,139,255,190,0,140,255,183,0,141,255,176,0,142,255,
+  170,0,143,255,163,0,144,255,156,0,145,255,148,0,145,255,
+  141,0,146,255,134,0,147,255,126,0,148,255,118,1,149,255,
+  110,2,150,255,105,4,151,255,99,5,152,255,93,6,152,255,
+  86,7,153,255,79,7,153,255,72,9,154,255,64,10,154,255,
+  55,11,155,255,44,12,155,255,30,13,156,255,26,44,166,255,
+  29,51,169,255,32,58,171,255,33,66,173,255,35,72,175,255,
+  35,79,178,255,35,86,180,255,35,93,182,255,34,100,184,255,
+  32,106,186,255,31,114,189,255,36,122,192,255,39,131,195,255,
+  41,140,199,255,43,149,202,255,44,158,205,255,45,167,208,255,
+  45,176,211,255,44,186,214,255,42,195,217,255,47,222,226,255,
+  60,223,227,255,71,224,227,255,80,224,228,255,89,225,229,255,
+  96,226,229,255,103,227,230,255,110,227,230,255,116,228,231,255,
+  123,229,232,255,128,230,232,255,134,230,233,255,139,231,234,255,
+  145,232,234,255,150,232,235,255,155,233,235,255,160,234,236,255,
+  165,235,237,255,169,235,237,255,174,236,238,255,178,237,239,255,
+  178,237,231,255,170,238,213,255,162,239,195,255,152,239,177,255,
+  142,240,159,255,130,240,140,255,117,241,121,255,102,241,100,255,
+  83,241,78,255,56,241,50,255,3,233,2,255,3,229,2,255,
+  3,224,2,255,2,219,2,255,2,215,2,255,2,210,1,255,
+  2,206,1,255,2,201,1,255,2,197,1,255,2,192,1,255,
+  1,188,1,255,1,183,1,255,1,179,1,255,1,174,1,255,
+  1,170,1,255,1,166,1,255,1,161,1,255,1,157,0,255,
+  1,153,0,255,1,148,0,255,1,144,0,255,0,140,0,255,
+  0,136,0,255,0,131,0,255,0,127,0,255,0,123,0,255,
+  0,119,0,255,0,115,0,255,0,111,0,255,0,107,0,255,
+  0,103,0,255,79,121,77,255,83,122,80,255,87,123,84,255,
+  91,124,87,255,94,125,91,255,98,126,94,255,102,127,98,255,
+  105,128,101,255,109,129,105,255,112,130,108,255,116,131,112,255,
+  137,111,116,255,137,105,109,255,137,99,103,255,137,92,97,255,
+  136,86,90,255,135,80,84,255,134,73,78,255,133,67,72,255,
+  132,60,66,255,130,53,61,255,112,0,1,255,116,0,1,255,
+  120,0,2,255,124,0,3,255,128,0,3,255,132,0,4,255,
+  136,0,4,255,140,0,5,255,144,0,5,255,149,0,6,255,
+  153,0,6,255,157,0,6,255,161,0,6,255,166,0,7,255,
+  170,0,7,255,174,0,7,255,179,0,7,255,183,0,7,255,
+  187,0,7,255,192,0,7,255,196,0,7,255,201,0,7,255,
+  205,0,7,255,209,0,7,255,214,0,7,255,218,0,7,255,
+  223,0,7,255,228,0,7,255,232,0,7,255,237,0,7,255,
+  241,0,7,255,250,59,83,255,251,67,91,255,253,74,99,255,
+  254,81,107,255,255,88,115,255,255,94,124,255,255,101,132,255,
+  255,107,141,255,255,112,149,255,255,118,158,255,255,124,166,255,
+  255,129,175,255,255,135,184,255,255,140,193,255,255,146,202,255,
+  254,166,199,255,255,180,194,255,255,195,188,255,255,208,183,255,
+  255,222,177,255,253,227,159,255,254,223,155,255,254,219,151,255,
+  254,216,147,255,255,212,144,255,255,208,140,255,255,204,136,255,
+  255,201,132,255,255,197,129,255,255,193,125,255,255,189,121,255,
+  255,185,117,255,255,181,114,255,255,178,110,255,255,174,106,255,
+  255,170,102,255,255,166,99,255,254,162,95,255,254,158,91,255,
+  254,154,88,255,253,150,84,255,251,140,79,255,248,137,77,255,
+  244,134,75,255,240,130,73,255,237,127,71,255,233,124,69,255,
+  230,121,68,255,226,118,66,255,222,115,64,255,219,112,62,255,
+  215,109,60,255,212,106,59,255,208,103,57,255,204,100,55,255,
+  201,97,53,255,197,94,51,255,194,91,50,255,190,88,48,255,
+  187,85,46,255,183,82,45,255,180,79,43,255,176,76,41,255,
+  173,73,39,255,169,70,38,255,166,67,36,255,162,64,34,255,
+  159,61,33,255,155,58,31,255,152,55,30,255,149,52,28,255,
+  145,49,26,255,142,46,25,255,138,43,23,255,135,40,22,255,
+  132,37,20,255,128,33,19,255,125,30,17,255,121,27,15,255,
+  118,23,14,255,115,20,12,255,112,16,10,255,107,15,9,255,
+  102,15,9,255,0,0,0,0
+]);
+
 // ── Velocity color lookup — AtticRadar colormaps.js velocity table, units: KTS ──
 // Linear interpolation between AtticRadar's exact color stops
 // Each pair of same-value stops = hard transition at that value
@@ -166,9 +418,9 @@ function renderCompactVelFlat(buf) {
     vel2d.push(row);
   }
 
-  // AtticRadar region-based dealias
+  // Run AtticRadar's exact pyart region-based dealiasing
   let dealiased = vel2d;
-  if (nyq > 0) {
+  if (nyq > 0.5) {
     try { dealiased = dealias(vel2d, nyq); } catch(e) { dealiased = vel2d; }
   }
 
@@ -195,7 +447,7 @@ function renderCompactVelFlat(buf) {
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
 }
 
-// ── AtticRadar exact region-based dealias (libnexrad_helpers/level2/dealias/dealias.js) ──
+// ── AtticRadar region-based dealias (libnexrad_helpers/level2/dealias/dealias.js) ──
 /**
  * This implementation of a region based doppler dealiasing algorithm
  * was ported almost exactly from pyart's "dealias_region_based" function.
