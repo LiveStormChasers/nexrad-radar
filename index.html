@@ -959,10 +959,6 @@ async function redrawCurrentFrame() {
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
   const msgType  = f.msgType || 'compact';
-  const cacheKey = `${curSite}-${msgType}`;
-
-  const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
-  if (needCoords) coordsPending[cacheKey] = true;
 
   let result;
   try {
@@ -971,25 +967,19 @@ async function redrawCurrentFrame() {
       type:       msgType,
       radarLat:   curLat,
       radarLon:   curLng,
-      withCoords: needCoords
+      withCoords: true
     });
   } catch(err) {
     console.error('Worker error:', err);
     return;
   }
 
-  if (!result || !result.rgba) return; // no data for this moment (e.g. no VEL in file)
+  if (!result || !result.rgba) return;
 
-  if (result.coords) {
-    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
-    delete coordsPending[cacheKey];
-  }
-
-  const cached = coordsCache[cacheKey];
   radarLayer.updateFrame(
     result.rgba,
-    cached ? cached.lngs : null,
-    cached ? cached.lats : null,
+    result.coords ? result.coords.lngs : null,
+    result.coords ? result.coords.lats : null,
     result.nGates,
     result.nRays
   );
