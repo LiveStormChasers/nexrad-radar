@@ -317,21 +317,17 @@ function parseLevel2(rawBuf, product = 'ref') {
     radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
     for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-    // Server-side azimuthal dealias (replaces client-side approach)
+    // Server-side radial-outward dealias
     const nyq = best.nyquist;
     if (nyq > 0) {
       const twoNyq = 2 * nyq;
       const ng = numGates;
-      for (let g = 0; g < ng; g++) {
-        const sv = [];
-        for (let r = 0; r < NUM_AZ && sv.length < 20; r++)
-          if (radialData[r * ng + g] > -900) sv.push(radialData[r * ng + g]);
-        if (!sv.length) continue;
-        sv.sort((a, b) => a - b);
-        let ref = sv[Math.floor(sv.length / 2)];
-        for (let r = 0; r < NUM_AZ; r++) {
+      for (let r = 0; r < NUM_AZ; r++) {
+        let ref = null;
+        for (let g = 0; g < ng; g++) {
           const i = r * ng + g;
           if (radialData[i] <= -900) continue;
+          if (ref === null) { ref = radialData[i]; continue; }
           const n = Math.round((ref - radialData[i]) / twoNyq);
           radialData[i] += n * twoNyq;
           ref = radialData[i];
