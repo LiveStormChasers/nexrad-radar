@@ -345,7 +345,11 @@ function parseLevel2(rawBuf, product = 'ref') {
                        : (Object.values(elevData).find(ed => ed.radialData === radialData)?.populated ?? 0);
   const isComplete = populatedCount >= 360;
 
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts };
+  // Extract nyquist for this elevation's radialData
+  const nyquist = Object.values(elevData).reduce((best, ed) => {
+    return (ed.nyquist > 0 && ed.radialData === radialData) ? ed.nyquist : best;
+  }, 0);
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts, nyquist };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -353,29 +357,33 @@ function parseLevel2(rawBuf, product = 'ref') {
 // ═══════════════════════════════════════════════════════════════
 
 function encodeCompact(parsed) {
-  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product } = parsed;
-  const maxRangeKm = (firstGateM + numGates * gateSizeM) / 1000;
+  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, nyquist } = parsed;
 
-  const headerSize = 24;
+  // Always encode to 1832 gates — pad with zeros if fewer (matches OpenSnow's fixed format)
+  const OUT_GATES = 1832;
+  const maxRangeKm = (firstGateM + OUT_GATES * gateSizeM) / 1000;
+
+  const headerSize = 28; // 24 + 4 bytes for nyquist f32 at [24..27]
   const azSize     = NUM_AZ * 4;
-  const gateSize   = NUM_AZ * numGates;
+  const gateSize   = NUM_AZ * OUT_GATES;
   const buf  = new ArrayBuffer(headerSize + azSize + gateSize);
   const dv   = new DataView(buf);
-  const u8   = new Uint8Array(buf);
+  const u8   = new Uint8Array(buf); // zero-initialized
 
   dv.setUint32(0,  0x52444152, true); // 'RDAR'
   dv.setUint32(4,  NUM_AZ,     true);
-  dv.setUint32(8,  numGates,   true);
+  dv.setUint32(8,  OUT_GATES,  true);
   dv.setFloat32(12, firstGateM, true);
   dv.setFloat32(16, gateSizeM,  true);
   dv.setFloat32(20, maxRangeKm, true);
+  dv.setFloat32(24, nyquist || 0, true); // actual Nyquist velocity m/s from Level-2
 
   for (let i = 0; i < NUM_AZ; i++)
     dv.setFloat32(headerSize + i*4, azAngles[i], true);
 
   const gateStart = headerSize + azSize;
+  const copyGates = Math.min(numGates, OUT_GATES);
 
-  // Copy gate data row by row, capped at copyGates — remaining gates stay 0 (no data)
   if (product === 'vel') {
     for (let r = 0; r < NUM_AZ; r++) {
       for (let g = 0; g < copyGates; g++) {
@@ -473,7 +481,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v17-${product}/${rest}`;
+      const cacheId = `v18-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
