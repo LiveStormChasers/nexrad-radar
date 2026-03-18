@@ -86,8 +86,10 @@ function parseCompact(buf) {
   const firstRangeM = dv.getFloat32(12, true);
   const gateSizeM   = dv.getFloat32(16, true);
   const maxRangeKm  = dv.getFloat32(20, true);
-  const gateOffset  = 24 + numAz * 4;
-  return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset };
+  // v18+: nyquist at [24..27]; older files have 24-byte header (nyquist=0)
+  const nyquist     = data.length > 24 + numAz * 4 + numGates ? dv.getFloat32(24, true) : 0;
+  const gateOffset  = 28 + numAz * 4; // header is now 28 bytes
+  return { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset, nyquist };
 }
 
 
@@ -402,21 +404,22 @@ function ccToRGBA(cc) {
 function renderCompactVelFlat(buf) {
   const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset } = parseCompact(buf);
 
-  // Decode raw bytes to float m/s, find Nyquist
+  // Decode raw bytes to float m/s
+  // Use nyquist from Level-2 header — this is the actual hardware Nyquist velocity,
+  // NOT the max observed value. Using the real Nyquist is critical for correct dealiasing.
   const vel2d = [];
-  let nyq = 0;
   for (let r = 0; r < numAz; r++) {
     const src = gateOffset + r * numGates;
     const row = [];
     for (let g = 0; g < numGates; g++) {
       const val = data[src + g];
       if (val <= 1) { row.push(null); continue; }
-      const v = (val - 129) * 0.5;
-      row.push(v);
-      if (Math.abs(v) > nyq) nyq = Math.abs(v);
+      row.push((val - 129) * 0.5);
     }
     vel2d.push(row);
   }
+  // nyquist from header (m/s) — e.g. 27.6 for VCP 212. Fall back to data max if missing.
+  let nyq = nyquist > 0 ? nyquist : vel2d.flat().reduce((m,v)=>v!==null&&Math.abs(v)>m?Math.abs(v):m, 0);
 
   // Run AtticRadar's exact pyart region-based dealiasing
   let dealiased = vel2d;
