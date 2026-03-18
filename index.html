@@ -990,11 +990,16 @@ async function redrawCurrentFrame() {
   if (!result || !result.rgba) return;
 
   if (result.coords) {
-    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    // Store coords under dimension-specific key AND the product key
+    const dimKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
+    coordsCache[dimKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
+    coordsCache[cacheKey] = coordsCache[dimKey];
     delete coordsPending[cacheKey];
   }
 
-  const cached = coordsCache[cacheKey];
+  // Look up by exact dimensions to avoid 1832-gate coords on 1192-gate frame
+  const dimKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
+  const cached = coordsCache[dimKey] || coordsCache[cacheKey];
   radarLayer.updateFrame(
     result.rgba,
     cached ? cached.lngs : null,
