@@ -240,6 +240,7 @@ let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = [];
 let downStations = new Set();
+let selStationId = null;
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -727,7 +728,7 @@ function addStationMarkers() {
     layout: {
       'icon-image': ['case',
         ['get', 'sel'],  ['concat', 'pill-', ['get', 'id'], '-sel'],
-        ['coalesce', ['get', 'down'], false], ['concat', 'pill-', ['get', 'id'], '-down'],
+        ['get', 'down'], ['concat', 'pill-', ['get', 'id'], '-down'],
                          ['concat', 'pill-', ['get', 'id']]
       ],
       'icon-allow-overlap':   true,
@@ -968,10 +969,6 @@ async function redrawCurrentFrame() {
   if (!f?.compactBuf || !mapReady || !radarLayer) return;
 
   const msgType  = f.msgType || 'compact';
-  const cacheKey = `${curSite}-${msgType}`;
-
-  const needCoords = !coordsCache[cacheKey] && !coordsPending[cacheKey];
-  if (needCoords) coordsPending[cacheKey] = true;
 
   let result;
   try {
@@ -980,28 +977,25 @@ async function redrawCurrentFrame() {
       type:       msgType,
       radarLat:   curLat,
       radarLon:   curLng,
-      withCoords: needCoords
+      withCoords: true
     });
   } catch(err) {
     console.error('Worker error:', err);
     return;
   }
 
-  if (!result || !result.rgba) return; // no data for this moment (e.g. no VEL in file)
+  if (!result || !result.rgba) return;
 
+  // Cache coords by exact dimensions — prevents 1832-gate coords being used for 1192-gate frames
+  const dimKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
   if (result.coords) {
-    coordsCache[cacheKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
-    delete coordsPending[cacheKey];
+    coordsCache[dimKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
   }
 
-  const cached = coordsCache[cacheKey];
-  radarLayer.updateFrame(
-    result.rgba,
-    cached ? cached.lngs : null,
-    cached ? cached.lats : null,
-    result.nGates,
-    result.nRays
-  );
+  const cached = coordsCache[dimKey];
+  if (!cached) return;
+
+  radarLayer.updateFrame(result.rgba, cached.lngs, cached.lats, result.nGates, result.nRays);
 }
 
 function clearRadar() {
