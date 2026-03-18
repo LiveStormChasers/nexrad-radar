@@ -240,7 +240,6 @@ let curProduct = 'REF';  // 'REF' or 'VEL'
 let frames = [], frameIdx = 0;
 let allFrames = [];
 let downStations = new Set();
-let selStationId = null;
 let curWindow = 150; // minutes of loop history: 15 | 30 | 60 | 150
 let playing = false, playTimer = null, dragging = false;
 let worker = null, workerQ = {}, workerMsgId = 0;
@@ -986,7 +985,6 @@ async function redrawCurrentFrame() {
 
   if (!result || !result.rgba) return;
 
-  // Cache coords by exact dimensions — prevents 1832-gate coords being used for 1192-gate frames
   const dimKey = `${curSite}-${msgType}-${result.nRays}-${result.nGates}`;
   if (result.coords) {
     coordsCache[dimKey] = { lngs: result.coords.lngs, lats: result.coords.lats };
