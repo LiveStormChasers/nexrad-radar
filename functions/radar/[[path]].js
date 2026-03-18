@@ -317,7 +317,27 @@ function parseLevel2(rawBuf, product = 'ref') {
     radialData = best.radialData; refData = best.refData; refNumGates = best.refNumGates;
     for (let i = 0; i < NUM_AZ; i++) azAngles[i] = best.azAngles[i];
 
-    // Dealiasing handled in radarWorker.js (browser, AtticRadar pyart algorithm)
+    // Server-side azimuthal dealias (replaces client-side approach)
+    const nyq = best.nyquist;
+    if (nyq > 0) {
+      const twoNyq = 2 * nyq;
+      const ng = numGates;
+      for (let g = 0; g < ng; g++) {
+        const sv = [];
+        for (let r = 0; r < NUM_AZ && sv.length < 20; r++)
+          if (radialData[r * ng + g] > -900) sv.push(radialData[r * ng + g]);
+        if (!sv.length) continue;
+        sv.sort((a, b) => a - b);
+        let ref = sv[Math.floor(sv.length / 2)];
+        for (let r = 0; r < NUM_AZ; r++) {
+          const i = r * ng + g;
+          if (radialData[i] <= -900) continue;
+          const n = Math.round((ref - radialData[i]) / twoNyq);
+          radialData[i] += n * twoNyq;
+          ref = radialData[i];
+        }
+      }
+    }
   }
 
   if (!radialData) {
