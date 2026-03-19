@@ -87,9 +87,9 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   flex-shrink:0;
 }
 .seg:last-child{margin-right:0}
-.seg.seg-past{background:#4a5560}
+.seg.seg-past{background:#2d7a3a}
 .seg.seg-active{background:var(--brand);min-width:10px}
-.seg.seg-future{background:var(--gray4)}
+.seg.seg-future{background:#3a3f44}
 .seg.seg-empty{background:#222;opacity:0.35;cursor:default;pointer-events:none}
 
 /* ── Controls row ── */
@@ -210,14 +210,8 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
 
       <!-- Play / Pause -->
       <button id="bPlay" title="Play/Pause">
-        <svg id="iconLoading" width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none">
-          <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2.5" stroke-dasharray="56" stroke-dashoffset="14" stroke-linecap="round">
-            <animateTransform attributeName="transform" type="rotate" from="0 14 14" to="360 14 14" dur="0.9s" repeatCount="indefinite"/>
-          </circle>
-          <rect x="10" y="10" width="8" height="8" rx="1.5" fill="currentColor"/>
-        </svg>
         <svg id="iconPlay" width="28" height="28" viewBox="0 0 384 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32-23-41L73 39z" fill="currentColor"/>
+          <path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z" fill="currentColor"/>
         </svg>
         <svg id="iconPause" width="28" height="28" viewBox="0 0 320 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none">
           <path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48H80c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H240z" fill="currentColor"/>
@@ -840,35 +834,28 @@ async function loadStation() {
 
     // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
-    const CONCURRENCY = 4;
-    let rIdx = 0;
-    async function runWorkerSlot() {
-      while (rIdx < remaining.length) {
-        const i = remaining[rIdx++];
+    // Sequential oldest→newest — bar fills left to right, no jumpy loading
+    for (const idx of remaining) {
+      if (gen !== loadGen) return;
+      try {
+        await fetchAndProcess(idx);
         if (gen !== loadGen) return;
-        try {
-          await fetchAndProcess(i);
-          if (gen !== loadGen) return;
-          if (frames[i].compactBuf) updateTickLoaded(i);
-          else { frames[i].failed = true; updateTickEmpty(i); }
-        } catch(e) {
-          frames[i].failed = true; updateTickEmpty(i);
-        }
-        if (gen === loadGen) {
-          const nL = frames.filter(f=>f.compactBuf).length;
-          if (nL < frames.length) setStatus(nL + ' / ' + frames.length + ' frames');
-        }
+        if (frames[idx]?.compactBuf) updateTickLoaded(idx);
+        else if (frames[idx]) { frames[idx].failed = true; updateTickEmpty(idx); }
+      } catch(e) {
+        if (frames[idx]) { frames[idx].failed = true; updateTickEmpty(idx); }
+      }
+      if (gen === loadGen) {
+        const nL = frames.filter(f=>f.compactBuf).length;
+        if (nL < frames.length) setStatus(nL + ' / ' + frames.length + ' frames');
       }
     }
-    Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
-      if (gen !== loadGen) return;
+    if (gen === loadGen) {
       setStatus('');
-      // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
-    });
-
-    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
+    }
+        liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
   } catch(e) {
     if (gen !== loadGen) return;
     console.error(e);
@@ -1159,26 +1146,22 @@ function startPlay() {
   if (!frames.length) return;
   const notReady = frames.filter(f => !f.compactBuf && !f.failed);
   if (notReady.length > 0) {
-    document.getElementById('iconPlay').style.display    = 'none';
-    document.getElementById('iconPause').style.display   = 'none';
-    document.getElementById('iconLoading').style.display = '';
+    document.getElementById('iconPlay').style.display = 'none';
+    document.getElementById('iconPause').style.display = 'none';
+    setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
     const iv = setInterval(() => {
-      // Spinner hidden = stop was clicked — cancel buffering
-      if (document.getElementById('iconLoading').style.display === 'none') {
-        clearInterval(iv); setStatus(''); return;
-      }
       const still = frames.filter(f => !f.compactBuf && !f.failed);
-      setStatus(frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + ' frames');
+      setStatus('Buffering ' + frames.filter(f=>f.compactBuf).length + ' / ' + frames.length + '…');
       if (still.length === 0) {
-        clearInterval(iv); setStatus('');
-        document.getElementById('iconLoading').style.display = 'none';
+        clearInterval(iv);
+        setStatus('');
         playing = true;
         document.getElementById('iconPlay').style.display  = 'none';
         document.getElementById('iconPause').style.display = '';
         if (frameIdx >= frames.length - 1) setFrame(0, true);
         scheduleNextFrame();
       }
-    }, 200);
+    }, 300);
     return;
   }
   playing = true;
@@ -1188,13 +1171,26 @@ function startPlay() {
   scheduleNextFrame();
 }
 
+function scheduleNextFrame() {
+  if (!playing) return;
+  const isLast = frameIdx >= frames.length - 1;
+  const delay  = isLast ? 750 : 50; // 750ms hold on last frame, 50ms between frames
+  playTimer = setTimeout(() => {
+    if (!playing) return;
+    if (frameIdx >= frames.length - 1) {
+      setFrame(0, true); // loop back to start
+    } else {
+      setFrame(frameIdx + 1);
+    }
+    scheduleNextFrame();
+  }, delay);
+}
+
 function stopPlay() {
   playing = false;
   clearTimeout(playTimer);
-  document.getElementById('iconPlay').style.display    = '';
-  document.getElementById('iconPause').style.display   = 'none';
-  document.getElementById('iconLoading').style.display = 'none';
-  setStatus('');
+  document.getElementById('iconPlay').style.display  = '';
+  document.getElementById('iconPause').style.display = 'none';
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────
