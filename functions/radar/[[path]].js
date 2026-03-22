@@ -309,8 +309,8 @@ function parseLevel2(rawBuf, product = 'ref') {
     const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (!allCuts.length) return null;
     const best = candidates.length
-      ? candidates.reduce((b, e) => e.numGates < b.numGates ? e : b)
-      : allCuts.reduce((b, e) => e.numGates < b.numGates ? e : b);
+      ? candidates.reduce((b, e) => e.numGates > b.numGates ? e : b)
+      : allCuts.reduce((b, e) => e.numGates > b.numGates ? e : b);
     if (!best) return null;
 
     numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
@@ -345,11 +345,7 @@ function parseLevel2(rawBuf, product = 'ref') {
                        : (Object.values(elevData).find(ed => ed.radialData === radialData)?.populated ?? 0);
   const isComplete = populatedCount >= 360;
 
-  // Extract nyquist for this elevation's radialData
-  const nyquist = Object.values(elevData).reduce((best, ed) => {
-    return (ed.nyquist > 0 && ed.radialData === radialData) ? ed.nyquist : best;
-  }, 0);
-  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts, nyquist };
+  return { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, isComplete, debugCuts };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -357,62 +353,55 @@ function parseLevel2(rawBuf, product = 'ref') {
 // ═══════════════════════════════════════════════════════════════
 
 function encodeCompact(parsed) {
-  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product, nyquist } = parsed;
+  const { radialData, azAngles, numGates, firstGateM, gateSizeM, NUM_AZ, product } = parsed;
+  const maxRangeKm = (firstGateM + numGates * gateSizeM) / 1000;
 
-  // Always encode to 1832 gates — pad with zeros if fewer (matches OpenSnow's fixed format)
-  const OUT_GATES = 1832;
-  const maxRangeKm = (firstGateM + OUT_GATES * gateSizeM) / 1000;
-
-  const headerSize = 28; // 24 + 4 bytes for nyquist f32 at [24..27]
+  const headerSize = 24;
   const azSize     = NUM_AZ * 4;
-  const gateSize   = NUM_AZ * OUT_GATES;
+  const gateSize   = NUM_AZ * numGates;
   const buf  = new ArrayBuffer(headerSize + azSize + gateSize);
   const dv   = new DataView(buf);
-  const u8   = new Uint8Array(buf); // zero-initialized
+  const u8   = new Uint8Array(buf);
 
   dv.setUint32(0,  0x52444152, true); // 'RDAR'
   dv.setUint32(4,  NUM_AZ,     true);
-  dv.setUint32(8,  OUT_GATES,  true);
+  dv.setUint32(8,  numGates,   true);
   dv.setFloat32(12, firstGateM, true);
   dv.setFloat32(16, gateSizeM,  true);
   dv.setFloat32(20, maxRangeKm, true);
-  dv.setFloat32(24, nyquist || 0, true); // actual Nyquist velocity m/s from Level-2
 
   for (let i = 0; i < NUM_AZ; i++)
     dv.setFloat32(headerSize + i*4, azAngles[i], true);
 
   const gateStart = headerSize + azSize;
-  const copyGates = Math.min(numGates, OUT_GATES);
 
   if (product === 'vel') {
-    for (let r = 0; r < NUM_AZ; r++) {
-      for (let g = 0; g < copyGates; g++) {
-        const mps = radialData[r * numGates + g];
-        if (mps < -900) continue;
-        let idx = Math.round(mps/0.5)+129;
-        if (idx<2) idx=2; if (idx>254) idx=254;
-        u8[gateStart + r * OUT_GATES + g] = idx;
-      }
+    // Velocity: val = clamp(round(mps/0.5)+129, 2, 254)
+    // decode: mps = (val-129)*0.5
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const mps = radialData[i];
+      if (mps < -900) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round(mps/0.5)+129;
+      if (idx<2) idx=2; if (idx>254) idx=254;
+      u8[gateStart+i]=idx;
     }
   } else if (product === 'cc') {
-    for (let r = 0; r < NUM_AZ; r++) {
-      for (let g = 0; g < copyGates; g++) {
-        const cc = radialData[r * numGates + g];
-        if (cc < -900 || cc < 0) continue;
-        let idx = Math.round(cc*240)+2;
-        if (idx<2) idx=2; if (idx>254) idx=254;
-        u8[gateStart + r * OUT_GATES + g] = idx;
-      }
+    // CC: val=0 → no data, val 2-254 → cc=(val-2)/240.0  (covers 0.0–1.05)
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const cc = radialData[i];
+      if (cc < -900 || cc < 0) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round(cc*240)+2;
+      if (idx<2) idx=2; if (idx>254) idx=254;
+      u8[gateStart+i]=idx;
     }
   } else {
-    for (let r = 0; r < NUM_AZ; r++) {
-      for (let g = 0; g < copyGates; g++) {
-        const dbz = radialData[r * numGates + g];
-        if (dbz < -32) continue;
-        let idx = Math.round((dbz+32)*2);
-        if (idx<0) idx=0; if (idx>253) idx=253;
-        u8[gateStart + r * OUT_GATES + g] = idx+1;
-      }
+    // Reflectivity: val=0 → no data, val 1-254 → dbz=(val-1)/2-32
+    for (let i = 0; i < NUM_AZ * numGates; i++) {
+      const dbz = radialData[i];
+      if (dbz < -32) { u8[gateStart+i]=0; continue; }
+      let idx = Math.round((dbz+32)*2);
+      if (idx<0) idx=0; if (idx>253) idx=253;
+      u8[gateStart+i]=idx+1;
     }
   }
   return u8;
@@ -481,7 +470,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v18-${product}/${rest}`;
+      const cacheId = `v16-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
