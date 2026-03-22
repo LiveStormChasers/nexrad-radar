@@ -725,7 +725,6 @@ function addStationMarkers() {
       'icon-allow-overlap':   true,
       'icon-ignore-placement':true,
       'icon-anchor':          'center',
-      'symbol-z-order':       'source',
     },
     paint: {
       'icon-opacity': 1
@@ -904,7 +903,7 @@ async function liveRefresh(gen) {
       if (gen !== loadGen) return;
       // Jump to newest frame with data
       const latestWithData = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
-      if (latestWithData > frameIdx) {
+      if (latestWithData >= frameIdx) {
         setFrame(latestWithData, true);
       }
     }
