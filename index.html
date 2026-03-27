@@ -834,7 +834,6 @@ async function loadStation() {
     if (gen !== loadGen) return;
 
     // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
-    const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
     // Sequential oldest→newest so bar fills left to right
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
     for (const idx of remaining) {
