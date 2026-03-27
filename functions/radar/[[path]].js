@@ -309,8 +309,8 @@ function parseLevel2(rawBuf, product = 'ref') {
     const candidates = allCuts.filter(ed => ed.populated >= 360);
     if (!allCuts.length) return null;
     const best = candidates.length
-      ? candidates.reduce((b, e) => e.numGates > b.numGates ? e : b)
-      : allCuts.reduce((b, e) => e.numGates > b.numGates ? e : b);
+      ? candidates.reduce((b, e) => e.numGates < b.numGates ? e : b)
+      : allCuts.reduce((b, e) => e.numGates < b.numGates ? e : b);
     if (!best) return null;
 
     numGates = best.numGates; firstGateM = best.firstGateM; gateSizeM = best.gateSizeM;
@@ -448,7 +448,7 @@ export async function onRequest(context) {
     const files = []; let m;
     while ((m=re.exec(html))!==null) files.push(m[1]);
     files.sort();
-    return new Response(JSON.stringify(files.slice(-24)), {
+    return new Response(JSON.stringify(files.slice(-26, -2)), {  // skip newest 2 — may still be uploading
       headers: { ...CORS, 'Content-Type':'application/json', 'Cache-Control':'no-store' }
     });
   }
@@ -470,7 +470,7 @@ export async function onRequest(context) {
       const product = url.searchParams.get('p') === 'vel' ? 'vel'
                     : url.searchParams.get('p') === 'cc'  ? 'cc'
                     : 'ref';
-      const cacheId = `v16-${product}/${rest}`;
+      const cacheId = `v21-${product}/${rest}`;
 
       const cache    = caches.default;
       const cacheKey = new Request(`https://radar-cache.internal/${cacheId}`);
