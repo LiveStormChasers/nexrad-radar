@@ -87,9 +87,9 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   flex-shrink:0;
 }
 .seg:last-child{margin-right:0}
-.seg.seg-past{background:#4a5560}
+.seg.seg-past{background:#2d7a3a}
 .seg.seg-active{background:var(--brand);min-width:10px}
-.seg.seg-future{background:var(--gray4)}
+.seg.seg-future{background:#3a3f44}
 .seg.seg-empty{background:#222;opacity:0.35;cursor:default;pointer-events:none}
 
 /* ── Controls row ── */
@@ -725,6 +725,7 @@ function addStationMarkers() {
       'icon-allow-overlap':   true,
       'icon-ignore-placement':true,
       'icon-anchor':          'center',
+      'symbol-z-order':       'source',
     },
     paint: {
       'icon-opacity': 1
@@ -834,35 +835,29 @@ async function loadStation() {
 
     // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
-    const CONCURRENCY = 4;
-    let rIdx = 0;
-    async function runWorkerSlot() {
-      while (rIdx < remaining.length) {
-        const i = remaining[rIdx++];
+    // Sequential oldest→newest so bar fills left to right
+    const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
+    for (const idx of remaining) {
+      if (gen !== loadGen) return;
+      try {
+        await fetchAndProcess(idx);
         if (gen !== loadGen) return;
-        try {
-          await fetchAndProcess(i);
-          if (gen !== loadGen) return;
-          if (frames[i].compactBuf) updateTickLoaded(i);
-          else { frames[i].failed = true; updateTickEmpty(i); }
-        } catch(e) {
-          frames[i].failed = true; updateTickEmpty(i);
-        }
-        if (gen === loadGen) {
-          const nL = frames.filter(f=>f.compactBuf).length;
-          if (nL < frames.length) setStatus(nL + ' / ' + frames.length + ' frames');
-        }
+        if (frames[idx]?.compactBuf) updateTickLoaded(idx);
+        else if (frames[idx]) { frames[idx].failed = true; updateTickEmpty(idx); }
+      } catch(e) {
+        if (frames[idx]) { frames[idx].failed = true; updateTickEmpty(idx); }
+      }
+      if (gen === loadGen) {
+        const nL = frames.filter(f=>f.compactBuf).length;
+        if (nL < frames.length) setStatus(nL + ' / ' + frames.length + ' frames');
       }
     }
-    Promise.all(Array.from({length: CONCURRENCY}, runWorkerSlot)).then(() => {
-      if (gen !== loadGen) return;
+    if (gen === loadGen) {
       setStatus('');
-      // After all done, jump to absolute latest loaded frame
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
-    });
-
-    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
+    }
+        liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
   } catch(e) {
     if (gen !== loadGen) return;
     console.error(e);
