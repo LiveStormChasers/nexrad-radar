@@ -833,8 +833,7 @@ async function loadStation() {
     if (!shown) { setStatus('No data'); return; }
     if (gen !== loadGen) return;
 
-    // Step 2: Load remaining frames in background — max 4 concurrent to avoid NOMADS rate limits
-    // Sequential oldest→newest so bar fills left to right
+    // Step 2: Load sequentially oldest→newest so bar fills left to right
     const remaining = frames.map((f, i) => i).filter(i => !frames[i].compactBuf && !frames[i].failed);
     for (const idx of remaining) {
       if (gen !== loadGen) return;
@@ -856,7 +855,7 @@ async function loadStation() {
       const latestLoaded = frames.reduce((best, f, i) => f.compactBuf ? i : best, -1);
       if (latestLoaded > frameIdx) setFrame(latestLoaded, true);
     }
-        liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
+    liveRefreshTimer = setTimeout(() => liveRefresh(gen), 15000);
   } catch(e) {
     if (gen !== loadGen) return;
     console.error(e);
