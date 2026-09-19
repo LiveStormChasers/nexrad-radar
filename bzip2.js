@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Live Storm Chasers Network LLC.  All rights reserved.
+// Source-visible, not open source. See LICENSE — using this code requires
+// written permission.
+
 /**
  * bzip2.js — Pure JavaScript BZip2 decompressor
  * Host this file at the same origin as index.html (GitHub Pages / CF Pages)

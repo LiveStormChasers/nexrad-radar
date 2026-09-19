@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+  Copyright (c) 2026 Live Storm Chasers Network LLC.  All rights reserved.
+  Source-visible, not open source. See LICENSE — using this code requires
+  written permission.
+-->
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -167,7 +173,7 @@ body{background:#000;color:#e0e8f0;font-family:-apple-system,BlinkMacSystemFont,
   <div id="legend-labels"></div>
 </div>
 
-<!-- Bottom controls — matches OpenSnow layout exactly -->
+<!-- Bottom controls -->
 <div id="bottomWrap">
 
   <!-- Station card pill, floats above panel -->
@@ -547,7 +553,7 @@ window.onload = () => {
   map.on('load', () => {
     mapReady = true;
 
-    // ── Match OpenSnow's basemap style ────────────────────────────────────
+    // ── Basemap style ────────────────────────────────────
     const style = map.getStyle();
     for (const layer of style.layers) {
       try {
@@ -570,12 +576,12 @@ window.onload = () => {
           map.setPaintProperty(id, 'line-opacity', 0);
 
         } else if (type === 'line' && (id.includes('admin-0') || id.includes('admin-1'))) {
-          // State/country borders — match OpenSnow: gray, moderate opacity
+          // State/country borders — gray, moderate opacity
           map.setPaintProperty(id, 'line-color', 'hsl(0, 0%, 52%)');
           map.setPaintProperty(id, 'line-opacity', id.includes('boundary-bg') ? 0 : 0.6);
 
         } else if (type === 'line' && (id.includes('road') || id.includes('bridge') || id.includes('tunnel'))) {
-          // Roads: very dim, dark gray — match OpenSnow rgb(56,56,56) at low opacity
+          // Roads: very dim, dark gray at low opacity
           map.setPaintProperty(id, 'line-color', 'rgb(56, 56, 56)');
           map.setPaintProperty(id, 'line-opacity', 0.4);
 
@@ -1139,7 +1145,7 @@ function setFrame(idx, force) {
   }
 }
 
-// ── Playback — matches OpenSnow: 50ms/frame, 750ms last-frame hold, loops ─
+// ── Playback — 50ms/frame, 750ms last-frame hold, loops ─
 function togglePlay() { playing ? stopPlay() : startPlay(); }
 
 function startPlay() {
@@ -1216,7 +1222,7 @@ function setStatus(msg) {
 }
 </script>
 
-  <!-- Radar Settings Sheet (OpenSnow style) — outside bottomWrap so fixed positioning works -->
+  <!-- Radar Settings Sheet — outside bottomWrap so fixed positioning works -->
   <div id="radarSheet" style="display:none">
     <div id="sheetInner">
       <div class="sheet-row">

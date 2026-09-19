@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Live Storm Chasers Network LLC.  All rights reserved.
+// Source-visible, not open source. See LICENSE — using this code requires
+// written permission.
+
 // Cloudflare Pages Function — NEXRAD Level-2 preprocessor
 // Routes:
 //   GET /radar/list/KXXX            → JSON array of last 10 filenames
@@ -144,7 +148,7 @@ function parseLevel2(rawBuf, product = 'ref') {
 
   // For VEL/CC we also extract co-located REF to use as a quality mask.
   // Gates with REF below threshold are noise/clutter → set to no-data.
-  // This matches OpenSnow's server-side quality control approach.
+  // Server-side quality control.
   const REF_MASK_THRESHOLD = 5.0; // dBZ — any real precipitation echo
   let refData = null, refNumGates = 0;
 

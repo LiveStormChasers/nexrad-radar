@@ -1,11 +1,18 @@
+// Copyright (c) 2026 Live Storm Chasers Network LLC.  All rights reserved.
+// Source-visible, not open source. See LICENSE — using this code requires
+// written permission.
+//
+// The region-based velocity dealiasing in this file follows Py-ART (ARM-DOE),
+// BSD-3-Clause. See ATTRIBUTION.md.
+
 // radarWorker.js — NEXRAD renderer, WebGL CustomLayer mesh approach
 // Outputs flat gate×ray RGBA image + great-circle corner grid for exact georeferencing.
 // The main thread's RadarCustomLayer draws one WebGL quad per gate×ray cell positioned
-// at its true great-circle lat/lon — same approach as OpenSnow's radarWorker.
+// at its true great-circle lat/lon.
 
 importScripts('bzip2.js');
 
-// ── OpenSnow exact reflectivity color table (196 stops, -3 to 94.5 dBZ, 0.5 step) ──
+// ── Reflectivity color table (196 stops, -3 to 94.5 dBZ, 0.5 step) ──
 const COLOR_TABLE = new Map([
   [-3,[168,171,152]],[-2.5,[163,167,151]],[-2,[158,163,150]],[-1.5,[154,159,149]],
   [-1,[149,155,148]],[-0.5,[144,151,147]],[0,[139,147,146]],[0.5,[135,144,145]],
@@ -259,7 +266,7 @@ function renderLevel2Flat(buf) {
 }
 
 
-// ── AtticRadar velocity color LUT — exact chroma.js LAB, correct domain ──
+// ── Velocity color LUT — chroma.js LAB, corrected domain ──
 // Exact pipeline: colortable_parser → scaleValues (kts→m/s) → append RF=999
 // chroma.scale(colors).domain(values).mode('lab'), cmin=-72.022, cmax=999
 // val=0: transparent, val=1: RF purple, val 2-254: mps=(val-129)*0.5
@@ -331,12 +338,12 @@ const VEL_LUT = new Uint8Array([
   102,15,9,255,0,0,0,0
 ]);
 
-// ── Velocity color lookup — AtticRadar colormaps.js velocity table, units: KTS ──
-// Linear interpolation between AtticRadar's exact color stops
+// ── Velocity color lookup — velocity table, units: KTS ──
+// Linear interpolation between color stops
 // Each pair of same-value stops = hard transition at that value
 function velToRGBA(kts) {
   if (isNaN(kts) || kts === null) return null;
-  // AtticRadar velocity colormap — exact segment interpolation.
+  // Velocity colormap — exact segment interpolation.
   // Each entry: [start_kts, start_rgb, end_kts, end_rgb]
   // Hard transitions happen BETWEEN segments (at boundary values), not within.
   const segs = [
@@ -373,9 +380,8 @@ function velToRGBA(kts) {
 }
 
 
-// ── OpenSnow exact Correlation Coefficient palette ────────────────────────
+// ── Correlation Coefficient palette ────────────────────────
 // Input: cc value 0.0–1.05
-// Source: reverse-engineered from opensnow.com/stormnet radarWorker
 const CC_STOPS = [
   { s: 0.00, e: 0.10, cs: [188,188,188], ce: [127,127,127] },
   { s: 0.10, e: 0.30, cs: [172,209,243], ce: [ 11, 83,148] },
@@ -402,7 +408,7 @@ function ccToRGBA(cc) {
   return [...CC_STOPS[CC_STOPS.length-1].ce];
 }
 
-// ── Compact velocity renderer — with AtticRadar pyart region-based dealiasing ──
+// ── Compact velocity renderer — Py-ART region-based dealiasing ──
 function renderCompactVelFlat(buf) {
   const { data, numAz, numGates, firstRangeM, gateSizeM, maxRangeKm, gateOffset, nyquist } = parseCompact(buf);
 
@@ -423,7 +429,7 @@ function renderCompactVelFlat(buf) {
   // nyquist from header (m/s) — e.g. 27.6 for VCP 212. Fall back to data max if missing.
   let nyq = nyquist > 0 ? nyquist : vel2d.flat().reduce((m,v)=>v!==null&&Math.abs(v)>m?Math.abs(v):m, 0);
 
-  // Run AtticRadar's exact pyart region-based dealiasing
+  // Run Py-ART region-based dealiasing
   let dealiased = vel2d;
   if (nyq > 0.5) {
     try { dealiased = dealias(vel2d, nyq); } catch(e) { dealiased = vel2d; }
@@ -452,20 +458,19 @@ function renderCompactVelFlat(buf) {
   return { rgba, nRays: numAz, nGates: numGates, firstRangeM, gateSizeM, maxRangeKm };
 }
 
-// ── AtticRadar region-based dealias (libnexrad_helpers/level2/dealias/dealias.js) ──
+// ── Region-based velocity dealiasing ─────────────────────────────
 /**
- * This implementation of a region based doppler dealiasing algorithm
- * was ported almost exactly from pyart's "dealias_region_based" function.
- * I used a specific commit as a reference point for this work, because
- * it was right when "scipy.sparse.coo_matrix" had stopped being used
- * by the algorithm.
- * 
- * You can find that commit here:
- * https://github.com/ARM-DOE/pyart/blob/41b34052dc36becd1783bb7dfb87c39570cab707/pyart/correct/region_dealias.py
- * 
- * All of this is to say that I only truly wrote a couple of lines of this code.
- * I simply ported pyart's dealiasing function from Python to JavaScript, with
- * a lot of help from ChatGPT and Google.
+ * Region-based Doppler velocity dealiasing, following the algorithm in
+ * Py-ART's dealias_region_based.
+ *
+ * Py-ART is developed by ARM-DOE and released under BSD-3-Clause:
+ *   https://github.com/ARM-DOE/pyart
+ *
+ * The reference implementation used is the commit at which the algorithm
+ * stopped depending on scipy.sparse.coo_matrix:
+ *   pyart/correct/region_dealias.py @ 41b34052
+ *
+ * See ATTRIBUTION.md for the full Py-ART copyright notice and licence text.
  */
 
 const np = {
@@ -1405,7 +1410,7 @@ function renderLevel2VelFlat(buf) {
 
   const { numGates, firstGateM, gateSizeM, radialData, refData, refNumGates } = best;
 
-  // Raw velocity — RF=purple, velocity=color table (m/s→knots→LUT like AtticRadar)
+  // Raw velocity — RF=purple, velocity=color table (m/s→knots→LUT)
   const MPS_TO_KTS = 1.9426;
   const rgba = new Uint8Array(NUM_AZ * numGates * 4);
   for (let r = 0; r < NUM_AZ; r++) {
@@ -1413,10 +1418,10 @@ function renderLevel2VelFlat(buf) {
       const mps = radialData[r * numGates + g];
       const pi = (r * numGates + g) * 4;
       if (mps === -9999) {
-        // Range-folded: AtticRadar purple rgb(139,0,218)
+        // Range-folded: purple rgb(139,0,218)
         rgba[pi]=139; rgba[pi+1]=0; rgba[pi+2]=218; rgba[pi+3]=255;
       } else if (mps > -900) {
-        // Convert m/s → knots, then look up color same as AtticRadar
+        // Convert m/s → knots, then look up color
         const kts = mps * MPS_TO_KTS;
         const rgb = velToRGBA(kts);
         if (!rgb) continue;
